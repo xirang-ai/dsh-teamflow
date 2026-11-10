@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xirang-ai/teamflow.git"
+    "url": "git+https://github.com/xirang-ai/dsh-teamflow.git"
   },
   "keywords": [
     "deepseek-harness",
@@ -115,8 +115,8 @@
     "@deepseek-ai/schemastery": "^3.19.0",
     "nanoid": "^6.0.2"
   },
-  "homepage": "https://github.com/xirang-ai/teamflow#readme",
+  "homepage": "https://github.com/xirang-ai/dsh-teamflow#readme",
   "bugs": {
-    "url": "https://github.com/xirang-ai/teamflow/issues"
+    "url": "https://github.com/xirang-ai/dsh-teamflow/issues"
   }
 }

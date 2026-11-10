@@ -124,7 +124,7 @@ dsh plugin --profile dev add .
 dsh --profile dev --port 3091 --no-open
 ```
 
-开发规则、官方文档入口与完整验证清单见 [AGENTS.md](https://github.com/xirang-ai/teamflow/blob/main/AGENTS.md) 和 [RELEASE.md](RELEASE.md)。
+开发规则、官方文档入口与完整验证清单见 [AGENTS.md](https://github.com/xirang-ai/dsh-teamflow/blob/main/AGENTS.md) 和 [RELEASE.md](RELEASE.md)。
 
 ## 许可证
 

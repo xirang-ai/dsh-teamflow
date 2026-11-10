@@ -124,7 +124,7 @@ dsh plugin --profile dev add .
 dsh --profile dev --port 3091 --no-open
 ```
 
-Development rules, official documentation links, and the full verification checklist are in [AGENTS.md](https://github.com/xirang-ai/teamflow/blob/main/AGENTS.md) and [RELEASE.md](RELEASE.md).
+Development rules, official documentation links, and the full verification checklist are in [AGENTS.md](https://github.com/xirang-ai/dsh-teamflow/blob/main/AGENTS.md) and [RELEASE.md](RELEASE.md).
 
 ## License
 
