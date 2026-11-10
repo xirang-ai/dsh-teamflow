@@ -147,3 +147,12 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# teamflow 本地开发
+.devhome/
+lib/
+.tmp/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.xirang-ai/
