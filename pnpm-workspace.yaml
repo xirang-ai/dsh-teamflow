@@ -1,0 +1,5 @@
+# pnpm 12 build approvals: dependencies allowed to run lifecycle scripts.
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/dsh-home-paths@0.2.2-rc.1'
