@@ -250,3 +250,29 @@ export function intakeAttachments(
 
   return { accepted: kept, rejections }
 }
+
+/**
+ * Whether a drag payload carries files from outside the page.
+ *
+ * The browser lists `Files` in `DataTransfer.types` for an operating-system
+ * drag (Explorer, Finder, desktop) and omits it for dragged text or DOM
+ * fragments. Only the former may arm the drop zone; otherwise dragging a
+ * selection inside the page would light up the attachment area.
+ * @param types - `DataTransfer.types` of a drag event, when it carries any.
+ * @returns true when the drag carries files.
+ */
+export function carriesFiles(types: readonly string[] | undefined): boolean {
+  return types !== undefined && types.includes('Files')
+}
+
+/**
+ * The files carried by one drop, in the order the browser listed them.
+ *
+ * The order matters: the list appends rows in arrival order, and submission
+ * uploads them in that same order, exactly as a picker selection does.
+ * @param files - `DataTransfer.files` of the drop event, when it carries any.
+ * @returns the dropped files, never undefined.
+ */
+export function droppedFiles(files: ArrayLike<File> | undefined): File[] {
+  return files === undefined ? [] : Array.from(files)
+}

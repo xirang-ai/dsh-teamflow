@@ -10,6 +10,8 @@
  *
  * @module
  */
+import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useState } from 'react'
 import type { ReactElement } from 'react'
 
@@ -62,7 +64,7 @@ export function ComposerKindPicker({
   const kinds: readonly ComposerKind[] = discussionSession ? COMPOSER_KINDS : CREATE_KINDS
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
+  const [open, setOpen] = useState(false)
   const change = useCallback(
     (next: ComposerKind | '') => {
       setError(null)
@@ -137,32 +139,55 @@ export function ComposerKindPicker({
     [agentPresets, blank, mode, sessionId, t],
   )
 
+  const locked = !blank
+  const currentLabel = mode === '' ? t('composer.other') : t(COMPOSER_KIND_LABEL[mode])
+  const items: readonly MenuEntry[] = [
+    { id: '', label: t('composer.other') },
+    ...kinds.map((kind) => ({ id: kind, label: t(COMPOSER_KIND_LABEL[kind]) })),
+  ]
+
   return (
     <>
       <style>{COMPOSER_STYLES}</style>
       <span className="tf-composer">
-      <label className="tf-composer-field">
-        <span className="tf-composer-label">{t('composer.label')}</span>
-        <select
-          className="tf-select tf-composer-select"
-          value={mode}
-          disabled={pending}
-          title={blank ? t('composer.hint') : t('composer.locked')}
-          onChange={(event) => change(event.target.value as ComposerKind | '')}
-        >
-          <option value="">{t('composer.other')}</option>
-          {kinds.map((kind) => (
-            <option key={kind} value={kind}>
-              {t(COMPOSER_KIND_LABEL[kind])}
-            </option>
-          ))}
-        </select>
-      </label>
-      {error !== null ? (
-        <span className="tf-composer-note" role="status">
-          {error}
-        </span>
-      ) : null}
+        <Menu
+          open={open}
+          items={items}
+          selectedId={mode}
+          onSelect={(id) => {
+            setOpen(false)
+            change(id as ComposerKind | '')
+          }}
+          onClose={() => setOpen(false)}
+          side="top"
+          portal
+          anchor={
+            <button
+              type="button"
+              className="tf-composer-trigger"
+              aria-label={`${t('composer.label')}: ${currentLabel}`}
+              aria-haspopup="menu"
+              aria-expanded={open}
+              aria-busy={pending}
+              title={blank ? t('composer.hint') : t('composer.locked')}
+              disabled={pending || locked}
+              onClick={() => setOpen((value) => !value)}
+            >
+              <span className="tf-composer-value">{currentLabel}</span>
+              <span
+                className={open ? 'tf-composer-chevron tf-composer-chevron-open' : 'tf-composer-chevron'}
+                aria-hidden="true"
+              >
+                <IconChevronDownOutlineRegular />
+              </span>
+            </button>
+          }
+        />
+        {error !== null ? (
+          <span className="tf-composer-note" role="status">
+            {error}
+          </span>
+        ) : null}
       </span>
     </>
   )

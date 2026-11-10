@@ -8,7 +8,7 @@
  * @module
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent, ReactElement } from 'react'
+import type { ChangeEvent, DragEvent, FormEvent, ReactElement } from 'react'
 
 import {
   CREATE_KINDS,
@@ -18,7 +18,9 @@ import {
 } from '../create.ts'
 import type { AttachmentPolicy } from '../remote/contract.ts'
 import {
+  carriesFiles,
   describeMediaTypes,
+  droppedFiles,
   fileExtension,
   fileKey,
   formatBytes,
@@ -154,6 +156,11 @@ export function CreateSurface({
   const [files, setFiles] = useState<readonly File[]>([])
   const [rejections, setRejections] = useState<readonly AttachmentRejection[]>([])
   const picker = useRef<HTMLInputElement>(null)
+  // The drop zone highlights only while a file drag is inside it. Depth counts
+  // dragenter/dragleave pairs from child rows, so sliding over a file chip does
+  // not flicker the highlight off and back on.
+  const [dragActive, setDragActive] = useState(false)
+  const dragDepth = useRef(0)
   // Image thumbnails are object URLs owned by this component: created once per
   // picked file and revoked when it leaves the list or the page unmounts.
   const previews = useRef(new Map<string, string>())
@@ -237,25 +244,112 @@ export function CreateSurface({
   )
 
   /**
-   * Admit one pick, keeping the legal files and explaining every refused one.
+   * Admit files arriving by click or by drop, keeping the legal ones and
+   * explaining every refused one.
    *
+   * Both entry points funnel through here so a dropped file is admitted by
+   * exactly the same rules, in the same order, as one chosen from the picker.
    * The limits come from the Host (`attachmentPolicy`); when it is unknown the
    * page validates nothing, exactly like a composer without image limits.
    */
-  const pick = (event: ChangeEvent<HTMLInputElement>): void => {
-    const picked = Array.from(event.target.files ?? [])
-    // Clear the control so removing a file and picking it again still fires.
-    event.target.value = ''
+  const addFiles = (picked: readonly File[]): void => {
     if (picked.length === 0) return
     const intake = intakeAttachments(picked, files, attachmentPolicy ?? null)
     if (intake.accepted.length > 0) setFiles((current) => [...current, ...intake.accepted])
     setRejections(intake.rejections)
   }
 
+  const pick = (event: ChangeEvent<HTMLInputElement>): void => {
+    const picked = Array.from(event.target.files ?? [])
+    // Clear the control so removing a file and picking it again still fires.
+    event.target.value = ''
+    addFiles(picked)
+  }
+
+  // Dropping must keep the list's own shapes: while the form is submitting a
+  // new file would be uploaded by nobody, and a build without the Host upload
+  // service has nowhere to put it. The page still swallows the drop, so the
+  // browser cannot navigate away to the file and discard the draft.
+  const dropRefused = busy || attachmentAvailable === false
+
+  /** Arm the highlight when a file drag enters the zone or one of its rows. */
+  const dragEnter = (event: DragEvent<HTMLDivElement>): void => {
+    if (!carriesFiles(event.dataTransfer?.types) || dropRefused) return
+    event.preventDefault()
+    dragDepth.current += 1
+    setDragActive(true)
+  }
+
+  /** Keep the drop allowed; the default would open the file and lose the draft. */
+  const dragOver = (event: DragEvent<HTMLDivElement>): void => {
+    if (!carriesFiles(event.dataTransfer?.types)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = dropRefused ? 'none' : 'copy'
+  }
+
+  /** Leaving a row or the zone: only the outermost leave ends the highlight. */
+  const dragLeave = (event: DragEvent<HTMLDivElement>): void => {
+    if (!carriesFiles(event.dataTransfer?.types)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDragActive(false)
+  }
+
+  /** Release inside the zone: the files join the list like a picker selection. */
+  const drop = (event: DragEvent<HTMLDivElement>): void => {
+    if (!carriesFiles(event.dataTransfer?.types)) return
+    event.preventDefault()
+    dragDepth.current = 0
+    setDragActive(false)
+    if (dropRefused) return
+    addFiles(droppedFiles(event.dataTransfer?.files))
+  }
+
+  // A cancelled drag (Esc), a drop outside the zone or leaving the window ends
+  // without a dragleave on the zone, so reset from the window as well: no
+  // highlight may survive the drag, and nothing may block a later click.
+  useEffect(() => {
+    if (!dragActive) return
+    const reset = (): void => {
+      dragDepth.current = 0
+      setDragActive(false)
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') reset()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('dragend', reset)
+    window.addEventListener('drop', reset)
+    window.addEventListener('blur', reset)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('dragend', reset)
+      window.removeEventListener('drop', reset)
+      window.removeEventListener('blur', reset)
+    }
+  }, [dragActive])
+
   /** Drop one file; its row disappears and a retry no longer uploads it. */
   const remove = (index: number): void => {
     setFiles((current) => current.filter((_, position) => position !== index))
     setRejections([])
+  }
+
+  /**
+   * Swallow file drags anywhere else on the page.
+   *
+   * Without this a file dropped beside the zone makes the browser open it and
+   * throw away the unsaved draft. Only the default is blocked here: the drop is
+   * not forwarded to the attachment list, so it never adds a file.
+   */
+  const pageDragOver = (event: DragEvent<HTMLDivElement>): void => {
+    if (carriesFiles(event.dataTransfer?.types)) event.preventDefault()
+  }
+
+  const pageDrop = (event: DragEvent<HTMLDivElement>): void => {
+    if (!carriesFiles(event.dataTransfer?.types)) return
+    event.preventDefault()
+    dragDepth.current = 0
+    setDragActive(false)
   }
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
@@ -300,7 +394,7 @@ export function CreateSurface({
             })
 
   return (
-    <div className="tf-create">
+    <div className="tf-create" onDragOver={pageDragOver} onDrop={pageDrop}>
       <header className="tf-detail-head">
         <div className="tf-detail-heading">
           <h1 className="tf-title">{t('create.title')}</h1>
@@ -370,23 +464,33 @@ export function CreateSurface({
           </label>
         </section>
 
-        <section className="tf-card">
+        <section
+          className="tf-card tf-attachment-dropzone"
+          data-drag={dragActive ? 'active' : undefined}
+          onDragEnter={dragEnter}
+          onDragOver={dragOver}
+          onDragLeave={dragLeave}
+          onDrop={drop}
+        >
           <div className="tf-card-head">
             <h2 className="tf-card-title">{t('create.attachment.label')}</h2>
             <span className="tf-card-hint">{t('create.attachment.optional')}</span>
           </div>
-          <div className="tf-attachment-bar">
-            <button
-              className="tf-btn"
-              data-tone="soft"
-              type="button"
-              disabled={busy || attachmentAvailable === false}
-              onClick={() => picker.current?.click()}
-            >
-              {t('create.attachment.add')}
-            </button>
-            <span className="tf-field-hint tf-grow">{attachmentHint}</span>
-          </div>
+          <button
+            className="tf-attachment-pick"
+            type="button"
+            disabled={busy || attachmentAvailable === false}
+            onClick={() => picker.current?.click()}
+          >
+            <span className="tf-attachment-plus" aria-hidden="true">
+              +
+            </span>
+            <span className="tf-attachment-pick-title">{t('create.attachment.add')}</span>
+            <span className="tf-attachment-pick-sub">
+              {dragActive ? t('create.attachment.dropActive') : t('create.attachment.dropHint')}
+            </span>
+          </button>
+          <p className="tf-attachment-limits">{attachmentHint}</p>
           <input
             ref={picker}
             className="tf-attachment-input"

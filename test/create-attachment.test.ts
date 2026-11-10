@@ -11,7 +11,9 @@ import { describe, it } from 'node:test'
 
 import type { AttachmentPolicy } from '../src/remote/contract.ts'
 import {
+  carriesFiles,
   describeMediaTypes,
+  droppedFiles,
   fileExtension,
   fileKey,
   formatBytes,
@@ -188,6 +190,37 @@ describe('attachment intake', () => {
     const picked = [file('one.png', 100, 'image/png')]
     intakeAttachments(picked, [], policy())
     assert.equal(picked.length, 1)
+  })
+})
+
+describe('attachment drop', () => {
+  // Only an operating-system drag lists `Files`; dragging a text selection or
+  // a row inside the page must not arm the attachment zone.
+  it('arms only for drags that carry files', () => {
+    assert.equal(carriesFiles(['Files']), true)
+    assert.equal(carriesFiles(['Files', 'text/plain']), true)
+    assert.equal(carriesFiles(['text/plain']), false)
+    assert.equal(carriesFiles([]), false)
+    assert.equal(carriesFiles(undefined), false)
+  })
+
+  it('keeps the order the browser listed the dropped files in', () => {
+    const dropped = droppedFiles([file('b.log', 1, 'text/plain'), file('a.png', 2, 'image/png')])
+    assert.deepEqual(dropped.map((item) => item.name), ['b.log', 'a.png'])
+    assert.deepEqual(droppedFiles(undefined), [])
+  })
+
+  // A drop is just another intake: the same limits, the same per-file refusals,
+  // and the files already in the list keep their place.
+  it('admits a dropped batch through the picker intake, refusals included', () => {
+    const intake = intakeAttachments(
+      droppedFiles([file('shot.bmp', 10, 'image/bmp'), file('ok.png', 100, 'image/png')]),
+      [file('kept.pdf', 10, 'application/pdf')],
+      policy(),
+    )
+    assert.deepEqual(intake.accepted.map((item) => item.name), ['ok.png'])
+    assert.deepEqual(intake.rejections.map((item) => item.reason), ['unsupportedType'])
+    assert.equal(intake.rejections[0]?.params.types, 'PNG/JPG/WebP/GIF')
   })
 })
 
