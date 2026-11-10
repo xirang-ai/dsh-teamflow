@@ -4,7 +4,7 @@
 
 Teamflow (`@xirang-ai/dsh-teamflow`) is a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin that turns **requirements → high-level design → detailed design → stories → development runs → bug fixes** into a persistent, resumable pipeline. It also adds a team workbench called **Xirang Workbench** to the DSH Web UI.
 
-Version: **`0.1.0`** (first release; see [CHANGELOG.md](CHANGELOG.md)).
+Version: **`0.1.1`** (adds drag and drop to the create page attachments; see [CHANGELOG.md](CHANGELOG.md)).
 
 - Data lives in SQLite; documents live in the workspace, so closing a session does not lose progress.
 - Five agent presets cover requirements, stories, bugs, development, and detailed design. Each preset controls its own tool boundary.
@@ -69,7 +69,7 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 - **Requirement detail**: high-level design, detailed-design file tree, story list, execution flow chart, linked sessions, and a properties panel.
 - **Story / bug detail**: body, status, run history, and manual actions such as run, cancel, and complete.
 - **Three permission tiers**: the **Run** button on a story row, the story page, and the bug page has an arrow menu for **Normal run / Read-only run / Full permission run**. The main button always starts a normal run; the choice is not remembered, so picking full permission once does not carry over. The session starts with the matching sandbox mode and approval policy, and its header shows a short Normal / Read-only / Full badge (sessions started before this feature have no record and show no badge).
-- **Create page**: pick a type and workspace to start a session without choosing an agent manually. Files can be attached too: images are checked against the same rules the session composer uses (type, per-file size, count and total taken from `ctx.attachments.imageLimits`, never a second list defined here), other file types carry no extra limits, each picked file can be removed, and the submission sends them as attachments on the new conversation's first message next to the workspace and description. The submit button is held back until uploading finishes so no attachment is lost.
+- **Create page**: pick a type and workspace to start a session without choosing an agent manually. Files can be attached too: the attachment card is both a click target and a drop zone, and a drop goes through the same rules as a picker selection (images are checked against the same rules the session composer uses — type, per-file size, count and total taken from `ctx.attachments.imageLimits`, never a second list defined here; other file types carry no extra limits), with a reason for every refused file. Each picked file can be removed, and the submission sends them as attachments on the new conversation's first message next to the workspace and description. The submit button is held back until uploading finishes so no attachment is lost.
 - **Composer type picker**: in an empty session, switch between requirement / story / bug / high-level design / detailed design / story-splitting presets.
 - **Session tab**: read-only view of the requirement, story, or bug linked to the current session.
 - **Delete and clean up**: only records with no active agent run can be deleted. The confirmation shows the impact; deletion is physical and cannot be undone.
