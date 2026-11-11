@@ -25,7 +25,7 @@ function open(): TeamflowDatabase {
   directories.push(dataDir)
   const handle = openTeamflowDatabase({
     dataDir,
-    docsRoot: join(dataDir, 'workspace'),
+    docsDir: join(dataDir, 'workspace'),
     version: '0.1.0',
     log: { info: () => {}, warn: () => {}, error: () => {} },
   })
@@ -615,7 +615,7 @@ describe('workbench board query', () => {
       'the fix run is part of the frame',
     )
     // 正文留在磁盘上：面板拿到路径后按需读取，快照里不带 markdown。
-    assert.match(runningStory.contentPath, /^\.xirang-ai\/dsh-teamflow\/stories\//)
+    assert.match(runningStory.contentPath, /^stories\//)
     assert.equal(workflow.getDesignDoc(doc.id)?.title, '暂停流程')
     assert.equal(workflow.getDesignDoc('doc_missing'), null)
   })

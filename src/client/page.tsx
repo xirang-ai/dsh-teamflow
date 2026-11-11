@@ -19,6 +19,7 @@ import type {
   BugRunReply,
   BugStatusReply,
   CancelRunReply,
+  DiscussionSessionReply,
   DocBody,
   RequirementSessionReply,
   RequirementStatusReply,
@@ -34,8 +35,8 @@ import type {
   ListItem,
   ListLane,
   NodeState,
+  DiscussionSessionNode,
   RequirementNode,
-  RequirementSessionNode,
   StoryNode,
 } from './board.ts'
 import { buildFileTree, normalizePath, resolveMarkdownHref } from './files.ts'
@@ -51,12 +52,16 @@ import type {
   DeleteReport,
   DeleteTarget,
   DeletableKind,
+  DiscussionSubjectType,
   RequirementStatus,
 } from '../store/model.ts'
 import { DEV_PRESET, buildBugDevPrompt, buildDevPrompt } from '../dev.ts'
 import {
+  buildRecordDiscussionPrompt,
   buildRequirementDiscussionPrompt,
+  presetForRecordDiscussion,
   presetForRequirementDiscussion,
+  type RecordDiscussionKind,
   type RequirementDiscussionKind,
 } from '../requirement-discussion.ts'
 import { CREATE_PRESET, buildCreatePrompt, type CreateDraft } from '../create.ts'
@@ -144,6 +149,13 @@ export interface WorkbenchData {
     sessionId: string,
     kind: RequirementDiscussionKind,
   ) => Promise<RequirementSessionReply>
+  /** Register the pending story or defect binding before the user sends the first message. */
+  readonly prepareDiscussionSession: (
+    subjectType: DiscussionSubjectType,
+    subjectId: string,
+    sessionId: string,
+    kind: string,
+  ) => Promise<DiscussionSessionReply>
   /** Compute deletion impact; the Host never writes during a preview. */
   readonly previewDelete: (targets: readonly DeleteTarget[]) => Promise<DeletePreview>
   /** Physically delete the confirmed records. */
@@ -479,6 +491,7 @@ export function WorkbenchPage({
   const [createBusy, setCreateBusy] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [discussionBusy, setDiscussionBusy] = useState<RequirementDiscussionKind | null>(null)
+  const [recordDiscussionBusy, setRecordDiscussionBusy] = useState<RecordDiscussionKind | null>(null)
   const [cleanup, setCleanup] = useState(false)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [confirm, setConfirm] = useState<DeleteConfirmState | null>(null)
@@ -1114,13 +1127,66 @@ export function WorkbenchPage({
     [data, openConversation, showToast, t],
   )
 
+  const startRecordDiscussion = useCallback(
+    (subject: { readonly kind: RecordDiscussionKind; readonly id: string; readonly title: string; readonly workspaceId: string }) => {
+      const open = openConversation
+      if (open === undefined) {
+        showToast(t('toast.startUnavailable'))
+        return
+      }
+      setRecordDiscussionBusy(subject.kind)
+      open(subject.workspaceId, buildRecordDiscussionPrompt(subject.kind, subject.title), {
+        agentPreset: presetForRecordDiscussion(subject.kind),
+        autoSend: false,
+        composerKind: subject.kind,
+      })
+        .then(async (outcome) => {
+          if (outcome.status === 'unavailable') {
+            if (mounted.current) {
+              showToast(outcome.message ?? t('toast.discussionFailed', { title: subject.title }))
+            }
+            return
+          }
+          if (outcome.sessionId === undefined) {
+            if (mounted.current) {
+              showToast(t('toast.discussionDrafted', { title: subject.title }))
+            }
+            return
+          }
+          // Opening the session unmounts the workbench panel, so the binding
+          // must be written before the mounted guard below.
+          try {
+            await data.prepareDiscussionSession(subject.kind, subject.id, outcome.sessionId, 'discuss')
+            if (!mounted.current) return
+            showToast(
+              outcome.status === 'drafted'
+                ? t('toast.discussionDrafted', { title: subject.title })
+                : t('toast.discussionStarted', { title: subject.title }),
+            )
+          } catch (failure) {
+            if (!mounted.current) return
+            showToast(
+              t('toast.discussionLinkFailed', {
+                title: subject.title,
+                message: failureMessage(failure),
+              }),
+            )
+          }
+        })
+        .catch(() => {
+          if (mounted.current) showToast(t('toast.discussionFailed', { title: subject.title }))
+        })
+        .finally(() => {
+          if (mounted.current) setRecordDiscussionBusy(null)
+        })
+    },
+    [data, openConversation, showToast, t],
+  )
+
   const requirementAction = useCallback(
     (requirement: RequirementNode): Action | null => {
       if (requirement.state === 'running') {
         return { label: t('row.open'), tone: 'live', icon: ICONS.live }
-      }
-      if (requirement.state === 'done') {
-        return { label: t('row.history'), tone: 'ghost', icon: ICONS.ghost }
       }
       const lone = loneReadyStory(requirement)
       return lone === undefined ? null : { label: t('row.start'), tone: 'soft', icon: ICONS.soft }
@@ -1228,12 +1294,12 @@ export function WorkbenchPage({
     }
   }
 
+  // The story detail header never carries a conversation button, whatever the
+  // state: discussions hang off the story body card and run sessions stay on
+  // their run rows, so only a ready story gets a start action here.
   const storyAction = useCallback(
-    (story: StoryNode): Action => {
-      if (story.state === 'running') return { label: t('row.open'), tone: 'live', icon: ICONS.live }
-      if (story.state === 'done') return { label: t('row.history'), tone: 'ghost', icon: ICONS.ghost }
-      return { label: t('row.start'), tone: 'soft', icon: ICONS.soft }
-    },
+    (story: StoryNode): Action | null =>
+      story.state === 'ready' ? { label: t('row.start'), tone: 'soft', icon: ICONS.soft } : null,
     [t],
   )
 
@@ -1899,6 +1965,15 @@ export function WorkbenchPage({
               }
               onStartFix={(tier) => startBugFix(activeBug, tier)}
               onCancelFix={() => cancelBugFix(activeBug)}
+              onNewDiscussion={() =>
+                startRecordDiscussion({
+                  kind: 'bug',
+                  id: activeBug.id,
+                  title: activeBug.title,
+                  workspaceId: activeBug.workspaceId,
+                })
+              }
+              discussionBusy={recordDiscussionBusy === 'bug'}
             />
           ) : null}
 
@@ -1925,6 +2000,15 @@ export function WorkbenchPage({
               onOpenSession={(sessionId) => openSession(sessionId)}
               onOpenPath={openFile}
               onMissing={(path) => showToast(t('doc.linkMissing', { path }))}
+              onNewDiscussion={() =>
+                startRecordDiscussion({
+                  kind: 'story',
+                  id: activeStory.id,
+                  title: activeStory.title,
+                  workspaceId: activeStory.workspaceId,
+                })
+              }
+              discussionBusy={recordDiscussionBusy === 'story'}
             />
           ) : null}
         </div>
@@ -2470,7 +2554,7 @@ function DiscussionSessions({
   readOnly = false,
 }: {
   readonly t: TranslateFn
-  readonly sessions: readonly RequirementSessionNode[]
+  readonly sessions: readonly DiscussionSessionNode[]
   /** Human-facing conversation title for a linked session id. */
   readonly sessionTitle: (sessionId: string) => string
   readonly onOpenSession: (sessionId: string | undefined) => void
@@ -3113,6 +3197,8 @@ export function BugSurface({
   onComplete,
   onStartFix,
   onCancelFix,
+  onNewDiscussion,
+  discussionBusy = false,
   readOnly = false,
 }: {
   readonly t: TranslateFn
@@ -3128,6 +3214,10 @@ export function BugSurface({
   readonly onStartFix: (tier: PermissionTier) => Promise<RunStartOutcome>
   /** Release a fix run whose session is gone. */
   readonly onCancelFix: () => void
+  /** Start a discussion about this defect in a fresh session. */
+  readonly onNewDiscussion?: () => void
+  /** True while the discussion session is being created. */
+  readonly discussionBusy?: boolean
   /** Render the same information without write or submission controls. */
   readonly readOnly?: boolean
 }): ReactElement {
@@ -3166,24 +3256,28 @@ export function BugSurface({
             {t('delete.action')}
           </button>
         )}
-        {readOnly || bug.sessionId === undefined ? null : (
-          <button
-            className="tf-btn"
-            data-tone="live"
-            type="button"
-            onClick={() => onOpenSession(bug.sessionId)}
-            style={{ flex: '0 0 auto' }}
-          >
-            <ChatGlyph />
-            {t('row.open')}
-          </button>
-        )}
       </div>
 
       <div className="tf-grid">
         <div>
           <section className="tf-card">
-            <SectionHead title={t('detail.bugBody')} />
+            <SectionHead
+              title={t('detail.bugBody')}
+              action={
+                readOnly || onNewDiscussion === undefined ? undefined : (
+                  <button
+                    className="tf-btn tf-btn-sm"
+                    data-tone="soft"
+                    type="button"
+                    disabled={discussionBusy}
+                    onClick={onNewDiscussion}
+                  >
+                    <PlusGlyph />
+                    {discussionBusy ? t('detail.discussionStarting') : t('detail.bugDiscussion')}
+                  </button>
+                )
+              }
+            />
             <div className="tf-doc-body">
               {bug.bodyMissing ? (
                 <p className="tf-card-hint">{t('body.missingGeneric')}</p>
@@ -3191,6 +3285,13 @@ export function BugSurface({
                 <MarkdownBody text={bug.content.join('\n')} t={t} />
               )}
             </div>
+            <DiscussionSessions
+              t={t}
+              sessions={bug.sessions}
+              sessionTitle={sessionTitle}
+              onOpenSession={onOpenSession}
+              readOnly={readOnly}
+            />
           </section>
           <section className="tf-card">
             <SectionHead
@@ -3282,6 +3383,8 @@ export function StorySurface({
   onOpenSession,
   onOpenPath,
   onMissing,
+  onNewDiscussion,
+  discussionBusy = false,
   readOnly = false,
 }: {
   readonly t: TranslateFn
@@ -3304,6 +3407,10 @@ export function StorySurface({
   readonly onOpenPath: (path: string) => void
   /** Report a markdown link that points at no known file. */
   readonly onMissing: (path: string) => void
+  /** Start a discussion about this story in a fresh session. */
+  readonly onNewDiscussion?: () => void
+  /** True while the discussion session is being created. */
+  readonly discussionBusy?: boolean
   /** Render the same information without write or submission controls. */
   readonly readOnly?: boolean
 }): ReactElement {
@@ -3367,7 +3474,23 @@ export function StorySurface({
       <div className="tf-grid">
         <div>
           <section className="tf-card">
-            <SectionHead title={t('detail.storyBody')} />
+            <SectionHead
+              title={t('detail.storyBody')}
+              action={
+                readOnly || onNewDiscussion === undefined ? undefined : (
+                  <button
+                    className="tf-btn tf-btn-sm"
+                    data-tone="soft"
+                    type="button"
+                    disabled={discussionBusy}
+                    onClick={onNewDiscussion}
+                  >
+                    <PlusGlyph />
+                    {discussionBusy ? t('detail.discussionStarting') : t('detail.storyDiscussion')}
+                  </button>
+                )
+              }
+            />
             <div className="tf-doc-body">
               {story.bodyMissing ? (
                 <p className="tf-card-hint" style={{ margin: 0 }}>
@@ -3387,6 +3510,13 @@ export function StorySurface({
                 />
               )}
             </div>
+            <DiscussionSessions
+              t={t}
+              sessions={story.sessions}
+              sessionTitle={sessionTitle}
+              onOpenSession={onOpenSession}
+              readOnly={readOnly}
+            />
           </section>
 
           <section className="tf-card">

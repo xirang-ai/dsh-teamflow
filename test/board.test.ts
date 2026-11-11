@@ -71,6 +71,7 @@ function frame(): WorkbenchSnapshot {
         doneAt: null,
         completedAt: null,
         createSessionId: null,
+        sessions: [],
         updatedAt: '2026-11-06T03:00:00.000Z',
         path: '.xirang-ai/dsh-teamflow/stories/sty_pause/story.md',
         body: '玩家点击暂停，计时停止。\n\n## 验收标准\n\n1. 点击后暂停\n2. 再点恢复',
@@ -88,6 +89,7 @@ function frame(): WorkbenchSnapshot {
         doneAt: null,
         completedAt: null,
         createSessionId: null,
+        sessions: [],
         updatedAt: '2026-11-04T03:00:00.000Z',
         path: '.xirang-ai/dsh-teamflow/stories/sty_solo/story.md',
         body: '一句话就够了。',
@@ -105,6 +107,7 @@ function frame(): WorkbenchSnapshot {
         doneAt: '2026-11-05T03:30:00.000Z',
         completedAt: '2026-11-05T04:00:00.000Z',
         createSessionId: 'session-split',
+        sessions: [],
         updatedAt: '2026-11-05T03:00:00.000Z',
         path: '.xirang-ai/dsh-teamflow/stories/sty_resume/story.md',
         body: '已经做完。',
@@ -135,6 +138,7 @@ function frame(): WorkbenchSnapshot {
         fixedAt: '2026-11-06T02:30:00.000Z',
         completedAt: null,
         createSessionId: 'session-bug',
+        sessions: [],
         updatedAt: '2026-11-06T02:00:00.000Z',
         body: '## 复现步骤\n\n1. 开始游戏\n2. 暂停',
         bodyMissing: false,
@@ -345,7 +349,7 @@ describe('timestamp formatting', () => {
 describe('remote contract', () => {
   it('declares one strict descriptor per method', () => {
     assert.equal(REMOTE_CONTRIBUTION.package, PACKAGE_NAME)
-    assert.equal(DESCRIPTORS.length, 15)
+    assert.equal(DESCRIPTORS.length, 16)
     assert.deepEqual(
       DESCRIPTORS.map((descriptor) => descriptor.method),
       [
@@ -360,6 +364,7 @@ describe('remote contract', () => {
         'cancelStory',
         'completeBug',
         'prepareRequirementSession',
+        'prepareDiscussionSession',
         'sessionPermissionTier',
         'previewDelete',
         'deleteRecords',
@@ -418,9 +423,13 @@ describe('remote contract', () => {
     )
     assert.deepEqual(
       DESCRIPTORS[11]?.parameters.map((parameter) => parameter.wire),
+      ['subjectType', 'subjectId', 'sessionId', 'kind', 'locale'],
+    )
+    assert.deepEqual(
+      DESCRIPTORS[12]?.parameters.map((parameter) => parameter.wire),
       ['sessionId', 'locale'],
     )
-    for (const descriptor of DESCRIPTORS.slice(12, 14)) {
+    for (const descriptor of DESCRIPTORS.slice(13, 15)) {
       assert.deepEqual(
         descriptor.parameters.map((parameter) => parameter.wire),
         ['targets', 'locale'],
@@ -429,7 +438,7 @@ describe('remote contract', () => {
     // The create page reads the Host's attachment rules; nothing but the
     // caller's locale goes over the wire.
     assert.deepEqual(
-      DESCRIPTORS[14]?.parameters.map((parameter) => parameter.wire),
+      DESCRIPTORS[15]?.parameters.map((parameter) => parameter.wire),
       ['locale'],
     )
   })

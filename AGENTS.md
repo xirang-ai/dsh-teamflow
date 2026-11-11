@@ -56,7 +56,7 @@
 | `cordis.patch.yml` 行的 `id` | `teamflow` |
 | 工具名前缀 | `teamflow_` |
 | 客户端模块 id（`__ModuleLoader__.load({ id })`） | `@xirang-ai/dsh-teamflow`（必须等于包名） |
-| 持久化目录 | `$DSH_HOME/xirang-ai/dsh-teamflow`（SQLite 文件 `teamflow.sqlite`） |
+| 持久化目录 | `$DSH_HOME/xirang-ai/dsh-teamflow`（SQLite 文件 `teamflow.sqlite`，文档在 `docs/`） |
 | 显示名 | en `Teamflow`、zh `息壤 Teamflow`（以 locale 字典为准） |
 
 命名依据：采用 **scoped 包名**。npm 的合法包名只有两种形态——无 scope 的 `name`，或 `@scope/name`；`xirang-ai/dsh-teamflow`（不带 `@`）不是合法包名，会被当成 GitHub 的 `user/repo` 简写。scope `@xirang-ai` 由 npm 组织 `xirang-ai` 独占：发布者必须是组织成员，**组织不存在就无法发布**（本地 `link:` 安装不受影响，可先开发）。scoped 包默认 private，首次发布必须带 `--access public`。DSH 侧没有强制前缀规则，官方自己的 Web 客户端插件也都是 scoped（`@deepseek-ai/dsh-client-*`），装配图按包名匹配、`require("@scope/name")` 均为标准用法。
@@ -246,7 +246,7 @@ declare module '@deepseek-ai/cordis' {
 **R18（必须）模型可见 ⟺ 可回放。** 任何进入模型请求的内容（工具结果、注入消息、系统提示片段）必须能由会话日志重建；新增模型可见输入时，同时新增/复用会话事件记录。
 原因：会话回放、审计、断点续跑都依赖这条不变量；绕过它会让"继续上次运行"读到错误状态。
 
-**R19（必须）持久化数据放在插件自有目录，带 schema 版本，通过迁移升级。** 根目录由 `dshHomePath('xirang-ai', 'dsh-teamflow')` 解析（优先级：配置 `dataDir` > `$DSH_HOME` > `~/.dsh`），SQLite 文件固定为 `teamflow.sqlite`，不用 JSON 文件存基础数据。
+**R19（必须）持久化数据放在插件自有目录，带 schema 版本，通过迁移升级。** 根目录由 `dshHomePath('xirang-ai', 'dsh-teamflow')` 解析（优先级：配置 `dataDir` > `$DSH_HOME` > `~/.dsh`），SQLite 文件固定为 `teamflow.sqlite`，不用 JSON 文件存基础数据。需求、详设、故事、缺陷正文默认落在 `<dataDir>/docs`（配置 `docsDir` 覆盖：留空取默认，支持绝对路径、相对工作目录的路径与 `~/`），`content_path` 一律存相对文档根的路径；插件不往用户工作区写 `.xirang-ai/`，也不改工作区 `.gitignore`。
 - 结构与数据版本用 `PRAGMA user_version`；迁移是 `MIGRATIONS` 里的有序数组，只追加不改已发布项，每条迁移与其版本号写入同一个事务。
 - 数据库版本高于本构建时**拒绝启动**并提示升级插件，不静默降级、不丢列。
 - 运行期临时产物可先写会话工作区（受沙箱允许），结束时归档到 `$DSH_HOME`，不在用户项目里留垃圾。

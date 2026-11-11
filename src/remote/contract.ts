@@ -48,6 +48,7 @@ import type {
   BugSeverity,
   BugStatus,
   DeletePreview,
+  DiscussionSubjectType,
   DeleteReport,
   DeleteTarget,
   DocKind,
@@ -115,6 +116,8 @@ export interface SnapshotStory {
   readonly completedAt: string | null
   /** Conversation that created the story; null when it was not recorded. */
   readonly createSessionId: string | null
+  /** Confirmed discussions of this story, newest first. */
+  readonly sessions: readonly SnapshotDiscussionSession[]
 }
 
 /** One 详细设计 document; its body is fetched on demand by {@link readDoc}. */
@@ -149,6 +152,8 @@ export interface SnapshotBug {
   readonly completedAt: string | null
   /** Conversation that created the defect; null when it was not recorded. */
   readonly createSessionId: string | null
+  /** Confirmed discussions of this defect, newest first. */
+  readonly sessions: readonly SnapshotDiscussionSession[]
 }
 
 /** One development or fix run; `sessionId` is the conversation it happened in. */
@@ -175,6 +180,18 @@ export interface SnapshotRequirementSession {
   /** Browser preparation time; null for create sessions. */
   readonly preparedAt: string | null
   /** Agent confirmation time; null while a discussion is pending. */
+  readonly linkedAt: string | null
+  readonly createdAt: string
+}
+
+/** One discussion conversation attached to a story or a defect. */
+export interface SnapshotDiscussionSession {
+  readonly sessionId: string
+  /** `discuss` for stories and defects; requirements keep their own kinds. */
+  readonly kind: string
+  /** Browser preparation time; null only for conversations that skipped it. */
+  readonly preparedAt: string | null
+  /** Agent confirmation time; null while the discussion is pending. */
   readonly linkedAt: string | null
   readonly createdAt: string
 }
@@ -265,6 +282,17 @@ export interface RequirementSessionReply {
   readonly kind: RequirementSessionKind
   readonly preparedAt: string | null
   readonly linkedAt: string | null
+}
+
+/** One discussion row as stored; `linkedAt` is null until the Agent confirms. */
+export interface DiscussionSessionReply {
+  readonly subjectType: DiscussionSubjectType
+  readonly subjectId: string
+  readonly sessionId: string
+  readonly kind: string
+  readonly preparedAt: string | null
+  readonly linkedAt: string | null
+  readonly createdAt: string
 }
 
 /** Success or failure envelope the browser mounts produce. */
@@ -375,6 +403,19 @@ export interface WorkbenchRemote {
     locale?: string,
   ): Promise<RemoteResult<RequirementSessionReply>>
   /**
+   * Register a newly created session as a pending discussion of any subject.
+   *
+   * Same two-phase contract as {@link prepareRequirementSession}, extended to
+   * stories and defects; this method never writes `linkedAt`.
+   */
+  prepareDiscussionSession(
+    subjectType: DiscussionSubjectType,
+    subjectId: string,
+    sessionId: string,
+    kind: string,
+    locale?: string,
+  ): Promise<RemoteResult<DiscussionSessionReply>>
+  /**
    * Read the tier a conversation was started with, for the session header.
    *
    * The answer comes from the workbench's own run records, never from the
@@ -409,6 +450,7 @@ export const METHODS = {
   cancelStory: 'cancelStory',
   completeBug: 'completeBug',
   prepareRequirementSession: 'prepareRequirementSession',
+  prepareDiscussionSession: 'prepareDiscussionSession',
   sessionPermissionTier: 'sessionPermissionTier',
   previewDelete: 'previewDelete',
   deleteRecords: 'deleteRecords',
@@ -558,6 +600,21 @@ export const DESCRIPTORS: readonly InvocationDescriptor[] = Object.freeze([
       parameter('requirementId', 'Requirement the discussion belongs to'),
       parameter('sessionId', 'Newly created conversation to link'),
       parameter('kind', 'Discussion kind: design (outline), detail (detailed design) or split (story splitting)'),
+      LOCALE_PARAMETER,
+    ]),
+    result: JSON_CODEC,
+  }),
+  Object.freeze({
+    id: `${PACKAGE_NAME}#${METHODS.prepareDiscussionSession}`,
+    service: SERVICE_KEY,
+    namespace: NAMESPACE,
+    method: METHODS.prepareDiscussionSession,
+    invocation: { kind: 'direct' as const },
+    parameters: Object.freeze([
+      parameter('subjectType', 'Discussion subject: requirement, story or bug'),
+      parameter('subjectId', 'Requirement, story or defect the discussion belongs to'),
+      parameter('sessionId', 'Newly created conversation to link'),
+      parameter('kind', 'Discussion kind: discuss for stories and defects, the requirement kinds otherwise'),
       LOCALE_PARAMETER,
     ]),
     result: JSON_CODEC,

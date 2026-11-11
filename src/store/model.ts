@@ -224,6 +224,30 @@ export interface RequirementSession {
   readonly createdAt: string
 }
 
+/** Which kind of record a discussion conversation belongs to. */
+export const DISCUSSION_SUBJECT_TYPES = ['requirement', 'story', 'bug'] as const
+export type DiscussionSubjectType = (typeof DISCUSSION_SUBJECT_TYPES)[number]
+
+/** Discussion kind used by stories and defects; requirements keep their own kinds. */
+export const GENERAL_DISCUSSION_KIND = 'discuss'
+
+/**
+ * One conversation registered against a requirement, story or defect.
+ *
+ * Rows start unconfirmed (`linkedAt` null) when the browser prepares a
+ * discussion and become visible once the Agent confirms with `linkedAt`.
+ */
+export interface DiscussionSession {
+  readonly subjectType: DiscussionSubjectType
+  readonly subjectId: string
+  readonly sessionId: string
+  /** `create` / `design` / `detail` / `split` for requirements, `discuss` otherwise. */
+  readonly kind: string
+  readonly preparedAt: string | null
+  readonly linkedAt: string | null
+  readonly createdAt: string
+}
+
 /**
  * One consistent read of every table the workbench renders.
  *
@@ -240,6 +264,8 @@ export interface BoardRows {
   readonly docStories: readonly DocStoryLink[]
   /** Requirement conversations, newest first; design rows may still be unconfirmed. */
   readonly requirementSessions: readonly RequirementSession[]
+  /** Confirmed story and defect discussions, newest first. */
+  readonly discussionSessions: readonly DiscussionSession[]
 }
 
 /** Input for {@link WorkflowStore.createDesignDoc}. */

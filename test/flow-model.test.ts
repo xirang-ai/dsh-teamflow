@@ -55,6 +55,7 @@ function story(overrides: Partial<StoryNode> = {}): StoryNode {
     acceptance: [],
     bodyMissing: false,
     runs: [],
+    sessions: [],
     ...overrides,
   }
 }

@@ -43,9 +43,9 @@ describe('openTeamflowDatabase', () => {
       assert.equal(handle.report.outcome, 'initialized')
       assert.equal(handle.report.firstStart, true)
       assert.deepEqual(handle.report.appliedMigrations, [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
       ])
-      assert.equal(TARGET_SCHEMA_VERSION, 16)
+      assert.equal(TARGET_SCHEMA_VERSION, 17)
 
       const roles = handle.listRoles()
       assert.deepEqual(
@@ -220,13 +220,13 @@ describe('openTeamflowDatabase', () => {
     const handle = openTeamflowDatabase({ dataDir, version: '0.1.0', log: silent })
     try {
       assert.deepEqual(handle.report.appliedMigrations, [
-        3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
       ])
       assert.equal(handle.report.firstStart, true)
       assert.equal(handle.listRoles().find((role) => role.key === 'custom')?.name, '自定义角色')
       const tables = handle.db
         .prepare(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('requirements', 'stories', 'bugs', 'runs', 'design_docs', 'design_doc_stories', 'workspaces', 'requirement_sessions')",
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('requirements', 'stories', 'bugs', 'runs', 'design_docs', 'design_doc_stories', 'workspaces', 'discussion_sessions')",
         )
         .all()
         .map((row) => String(row['name']))
@@ -234,7 +234,7 @@ describe('openTeamflowDatabase', () => {
         'bugs',
         'design_doc_stories',
         'design_docs',
-        'requirement_sessions',
+        'discussion_sessions',
         'requirements',
         'runs',
         'stories',

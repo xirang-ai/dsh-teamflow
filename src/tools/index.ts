@@ -29,6 +29,7 @@ import { getDesignDocTool } from './get-design-doc.ts'
 import { getRequirementTool } from './get-requirement.ts'
 import { getStoryTool } from './get-story.ts'
 import { linkRequirementSessionTool } from './link-requirement-session.ts'
+import { linkSessionTool } from './link-session.ts'
 import { listRecordsTool } from './list-records.ts'
 import { listWorkspacesTool } from './list-workspaces.ts'
 import { createToolEnvironment } from './shared.ts'
@@ -65,6 +66,7 @@ export type ToolProfile = (typeof TOOL_PROFILES)[number]
  */
 export const PROFILE_TOOL_NAMES: Readonly<Record<ToolProfile, readonly string[]>> = {
   requirement: [
+    'teamflow_link_session',
     'teamflow_link_requirement_session',
     'teamflow_create_requirement',
     'teamflow_get_requirement',
@@ -73,6 +75,7 @@ export const PROFILE_TOOL_NAMES: Readonly<Record<ToolProfile, readonly string[]>
     'teamflow_list_workspaces',
   ],
   detail: [
+    'teamflow_link_session',
     'teamflow_link_requirement_session',
     'teamflow_get_requirement',
     'teamflow_get_design_doc',
@@ -82,6 +85,7 @@ export const PROFILE_TOOL_NAMES: Readonly<Record<ToolProfile, readonly string[]>
     'teamflow_list_workspaces',
   ],
   split: [
+    'teamflow_link_session',
     'teamflow_link_requirement_session',
     'teamflow_get_requirement',
     'teamflow_get_design_doc',
@@ -102,6 +106,7 @@ export const PROFILE_TOOL_NAMES: Readonly<Record<ToolProfile, readonly string[]>
     'teamflow_cancel_run',
   ],
   bug: [
+    'teamflow_link_session',
     'teamflow_create_bug',
     'teamflow_get_bug',
     'teamflow_update_bug',
@@ -116,6 +121,7 @@ export const PROFILE_TOOL_NAMES: Readonly<Record<ToolProfile, readonly string[]>
     'teamflow_update_design_doc',
     'teamflow_get_design_doc',
     'teamflow_link_requirement_session',
+    'teamflow_link_session',
     'teamflow_create_story',
     'teamflow_get_story',
     'teamflow_update_story',
@@ -170,6 +176,7 @@ export function apply(ctx: Context, config: Config): void {
     updateDesignDocTool(environment),
     getDesignDocTool(environment),
     linkRequirementSessionTool(environment),
+    linkSessionTool(environment),
     createStoryTool(environment),
     getStoryTool(environment),
     updateStoryTool(environment),

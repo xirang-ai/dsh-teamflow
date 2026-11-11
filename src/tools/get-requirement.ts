@@ -120,10 +120,7 @@ export function getRequirementTool(environment: ToolEnvironment) {
       }
       const docs = environment.database.workflow.listDesignDocs(requirement.id)
       const stories = environment.database.workflow.listStories({ requirementId: requirement.id })
-      const body = environment.database.workflow.readContent(
-        requirement.workspaceId,
-        requirement.contentPath,
-      )
+      const body = environment.database.workflow.readContent(requirement.contentPath)
       return {
         requirementId: requirement.id,
         title: requirement.title,

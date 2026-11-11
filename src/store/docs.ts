@@ -1,13 +1,12 @@
 /**
- * 文档落盘：正文不进 SQLite，只记工作区内的相对路径。
+ * 文档落盘：正文不进 SQLite，只记文档根内的相对路径。
  *
- * 目录结构（相对工作区根）：
+ * 目录结构（相对文档根，默认 `$DSH_HOME/xirang-ai/dsh-teamflow/docs`）：
  *
- *   .xirang-ai/dsh-teamflow/
- *     requirements/<req_id>/requirement.md 需求 + 概要设计正文
- *     requirements/<req_id>/docs/<doc_id>.md 详细设计文档（一份需求可以有很多份）
- *     stories/<sty_id>/story.md            故事说明 + 验收标准
- *     bugs/<bug_id>/bug.md                 缺陷正文（描述、复现、期望、实际、环境）
+ *   requirements/<req_id>/requirement.md 需求 + 概要设计正文
+ *   requirements/<req_id>/docs/<doc_id>.md 详细设计文档（一份需求可以有很多份）
+ *   stories/<sty_id>/story.md            故事说明 + 验收标准
+ *   bugs/<bug_id>/bug.md                 缺陷正文（描述、复现、期望、实际、环境）
  *
  * 所有写操作走「临时文件 + rename」，避免中途崩溃留下半截文档。
  */
@@ -21,18 +20,15 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, isAbsolute, join, posix, resolve, sep, win32 } from 'node:path'
+import { dirname, isAbsolute, posix, resolve, sep, win32 } from 'node:path'
 
 import { describeError } from '../errors.ts'
-
-/** 文档根目录名，工作区内的隐藏目录。 */
-export const DOC_ROOT = '.xirang-ai/dsh-teamflow'
 
 /** 文档种类：决定落盘路径。 */
 export type DocKind = 'requirement' | 'designDoc' | 'story' | 'bug'
 
 /**
- * 计算一份文档在工作区内的相对路径。
+ * 计算一份文档在文档根内的相对路径。
  *
  * @param kind - 文档种类
  * @param ids - 该种类需要的标识（designDoc 需要需求 id 与文档 id）
@@ -42,18 +38,18 @@ export function docPath(kind: DocKind, ids: { id: string; requirementId?: string
   const id = requireId(ids.id)
   switch (kind) {
     case 'requirement':
-      return `${DOC_ROOT}/requirements/${id}/requirement.md`
+      return `requirements/${id}/requirement.md`
     case 'story':
-      return `${DOC_ROOT}/stories/${id}/story.md`
+      return `stories/${id}/story.md`
     case 'bug':
-      return `${DOC_ROOT}/bugs/${id}/bug.md`
+      return `bugs/${id}/bug.md`
     case 'designDoc':
-      return `${DOC_ROOT}/requirements/${requireId(ids.requirementId)}/docs/${id}.md`
+      return `requirements/${requireId(ids.requirementId)}/docs/${id}.md`
   }
 }
 
 /**
- * 把相对路径拼到工作区根上；只接受插件自己生成的、以 `/` 分隔的工作区相对路径。
+ * 把相对路径拼到文档根上；只接受插件自己生成的、以 `/` 分隔的文档相对路径。
  *
  * 拒绝 POSIX 绝对路径、Windows 盘符/UNC/反斜杠路径与任何 `..`，最后再做一次
  * 词法 containment 校验，确保结果仍落在 `root` 之内。
@@ -61,10 +57,10 @@ export function docPath(kind: DocKind, ids: { id: string; requirementId?: string
 export function resolveDocPath(root: string, relative: string): string {
   if (relative.length === 0) throw new Error('teamflow: document path is empty')
   if (relative.includes('\0') || relative.includes('\\')) {
-    throw new Error(`teamflow: document path must be workspace-relative, got "${relative}"`)
+    throw new Error(`teamflow: document path must be relative to the document root, got "${relative}"`)
   }
   if (isAbsolute(relative) || win32.isAbsolute(relative) || /^[A-Za-z]:/.test(relative)) {
-    throw new Error(`teamflow: document path must be workspace-relative, got "${relative}"`)
+    throw new Error(`teamflow: document path must be relative to the document root, got "${relative}"`)
   }
   const segments = relative.split('/')
   if (segments.some((part) => part === '..' || part === '.' || part.length === 0)) {
@@ -73,29 +69,25 @@ export function resolveDocPath(root: string, relative: string): string {
   const base = resolve(root)
   const absolute = resolve(base, ...segments)
   if (absolute !== base && !absolute.startsWith(`${base}${sep}`)) {
-    throw new Error(`teamflow: document path escapes the workspace, got "${relative}"`)
+    throw new Error(`teamflow: document path escapes the document root, got "${relative}"`)
   }
   return absolute
 }
 
-/** 工作区路径 + 相对路径的展示形式（日志与工具结果用，始终 `/`）。 */
+/** 文档相对路径的展示形式（日志与工具结果用，始终 `/`）。 */
 export function displayPath(relative: string): string {
   return relative.split(sep).join(posix.sep)
 }
 
 /**
- * 首次为一个工作区准备文档目录：建目录、写 `.gitignore`、必要时把 `.xirang-ai/`
- * 追加进工作区自己的 `.gitignore`。
+ * 首次为文档根准备共享目录：只建 `requirements/`、`stories/`、`bugs/`，
+ * 不碰工作区，也不写 `.gitignore`。
  *
- * @param root - 工作区根目录（绝对路径）
+ * @param root - 文档根目录（绝对路径）
  * @returns 实际创建的目录（相对路径），便于工具结果里说明
  */
 export function ensureDocTree(root: string): string[] {
-  const dirs = [
-    `${DOC_ROOT}/requirements`,
-    `${DOC_ROOT}/stories`,
-    `${DOC_ROOT}/bugs`,
-  ]
+  const dirs = ['requirements', 'stories', 'bugs']
   const created: string[] = []
   for (const dir of dirs) {
     const absolute = resolveDocPath(root, dir)
@@ -104,13 +96,6 @@ export function ensureDocTree(root: string): string[] {
       created.push(dir)
     }
   }
-
-  const localIgnore = resolveDocPath(root, `${DOC_ROOT}/.gitignore`)
-  if (!existsSync(localIgnore)) {
-    writeFileSync(localIgnore, '*\n', 'utf8')
-  }
-
-  appendWorkspaceGitignore(root)
   return created
 }
 
@@ -159,7 +144,7 @@ export function removeDoc(root: string, relative: string): void {
 
 /** 已挪出正式路径、等待随数据库事务一起确认删除的文档。 */
 export interface StagedDoc {
-  /** 原来的工作区相对路径；事务失败时据此还原。 */
+  /** 原来的文档相对路径；事务失败时据此还原。 */
   readonly relative: string
   /** 临时绝对路径，与正式文件同目录，保证 rename 是原子的。 */
   readonly staged: string
@@ -174,8 +159,8 @@ let stagedSequence = 0
  * 到临时名，再在 SQLite 事务里删记录：事务失败就把文件改回来，事务成功才真正
  * `unlink`。这样任何时刻都不会出现「记录已经没了、正式路径上的文件还在」的悬挂态。
  *
- * @param root - 工作区根目录
- * @param relative - 文档的工作区相对路径
+ * @param root - 文档根目录
+ * @param relative - 文档相对路径
  * @returns 暂存信息；文件本来就不存在时返回 `null`
  */
 export function stageDocDeletion(root: string, relative: string): StagedDoc | null {
@@ -212,10 +197,10 @@ export function dropStagedDoc(staged: StagedDoc): boolean {
  * 只删空目录：目录里还有别的东西时立刻停下，避免误删用户手工放进来的文件。
  */
 export function pruneEmptyDirectories(root: string, relative: string): void {
-  const boundary = resolveDocPath(root, DOC_ROOT)
+  const boundary = resolve(root)
   let directory = dirname(resolveDocPath(root, relative))
   // Stop before the shared `requirements/`, `stories/`, `bugs/` roots: those
-  // belong to the workspace tree, not to the record being deleted.
+  // belong to the document tree, not to the record being deleted.
   while (directory !== boundary && dirname(directory) !== boundary && directory.startsWith(`${boundary}${sep}`)) {
     try {
       if (readdirSync(directory).length > 0) return
@@ -240,19 +225,4 @@ function requireId(id: string | undefined): string {
     throw new Error(`teamflow: invalid document id ${JSON.stringify(id)}`)
   }
   return id
-}
-
-/** 把 `.xirang-ai/` 追加到工作区 `.gitignore`；没有该文件就创建一个只含这一行的。 */
-function appendWorkspaceGitignore(root: string): void {
-  const ignore = join(root, '.gitignore')
-  const entry = '.xirang-ai/'
-  if (!existsSync(ignore)) {
-    writeFileSync(ignore, `${entry}\n`, 'utf8')
-    return
-  }
-  const current = readFileSync(ignore, 'utf8')
-  const lines = current.split('\n').map((line) => line.trim())
-  if (lines.includes(entry) || lines.includes('.xirang-ai')) return
-  const suffix = current.endsWith('\n') || current.length === 0 ? '' : '\n'
-  writeFileSync(ignore, `${current}${suffix}${entry}\n`, 'utf8')
 }

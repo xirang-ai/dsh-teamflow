@@ -48,7 +48,7 @@ export function readDesignDoc(workflow: WorkflowStore, rawId: string): DesignDoc
   if (requirement === null) {
     throw new Error(`teamflow: 详细设计 ${id} 所属的需求 ${doc.requirementId} 不存在。`)
   }
-  const body = workflow.readContent(requirement.workspaceId, doc.contentPath)
+  const body = workflow.readContent(doc.contentPath)
   return {
     id: doc.id,
     requirementId: doc.requirementId,

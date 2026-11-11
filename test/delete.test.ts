@@ -26,7 +26,7 @@ function open(): Fixture {
   const root = join(dataDir, 'workspace')
   const handle = openTeamflowDatabase({
     dataDir,
-    docsRoot: root,
+    docsDir: root,
     version: '0.1.0',
     log: { info: () => {}, warn: () => {}, error: () => {} },
   })

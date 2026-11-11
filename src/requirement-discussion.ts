@@ -64,3 +64,36 @@ export function buildRequirementDiscussionPrompt(kind: RequirementDiscussionKind
   }
   return ['【继续讨论需求与概要设计】', '', '我的补充：'].join('\n')
 }
+
+/** Preset for a story discussion (reuses the standalone story agent). */
+export const STORY_DISCUSSION_PRESET = 'xirang-story'
+
+/** Preset for a defect discussion. */
+export const BUG_DISCUSSION_PRESET = 'xirang-bug'
+
+/** A record kind whose detail page can start a discussion. */
+export type RecordDiscussionKind = 'story' | 'bug'
+
+/**
+ * Pick the preset a story or defect discussion runs under.
+ * @param kind - `story` or `bug`.
+ * @returns the preset id declared in `cordis.patch.yml`.
+ */
+export function presetForRecordDiscussion(kind: RecordDiscussionKind): string {
+  return kind === 'bug' ? BUG_DISCUSSION_PRESET : STORY_DISCUSSION_PRESET
+}
+
+/**
+ * Build the prompt sent when the user starts a discussion from a story or defect page.
+ *
+ * The title travels in the prompt because it is what the reader recognises;
+ * the id stays out of it, just like requirement discussions: the tools resolve
+ * the record through the session binding.
+ * @param kind - `story` or `bug`.
+ * @param title - story or defect title shown to the reader.
+ * @returns the first message of the discussion, carrying the supplement slot.
+ */
+export function buildRecordDiscussionPrompt(kind: RecordDiscussionKind, title: string): string {
+  const heading = kind === 'bug' ? '【继续讨论缺陷】' : '【继续讨论故事】'
+  return [heading, title, '', '我的补充：'].join('\n')
+}

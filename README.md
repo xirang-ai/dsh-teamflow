@@ -4,12 +4,12 @@
 
 Teamflow（`@xirang-ai/dsh-teamflow`）是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（下称 DSH）的插件：把**需求 → 概要设计 → 详细设计 → 故事拆分 → 研发执行 → 缺陷修复**做成一条可持久化、可断点续跑的流水线，并在 Web 端提供团队工作台「息壤工作台」。
 
-当前版本：**`0.1.1`**（新增创建页附件拖放，变更记录见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本：**`0.1.2`**（文档迁入插件目录，故事与缺陷支持讨论会话，变更记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
-- 数据落在 SQLite，文档落在工作区，关掉会话不丢进度。
+- 数据落在 SQLite，文档落在插件目录（默认 `<dataDir>/docs`），关掉会话不丢进度。
 - 五个 Agent 预设分别负责需求、故事、缺陷、研发和详细设计，工具边界由预设控制。
 - 工作台提供列表、详情、流程图、创建页、会话内只读页签，以及受控的删除入口。
-- 十九个 `teamflow_*` 工具把访谈与研发结果写回数据库和工作区文档。
+- 二十个 `teamflow_*` 工具把访谈与研发结果写回数据库和插件文档。
 
 ## 环境要求
 
@@ -67,7 +67,7 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 
 - **列表**：未完成 / 执行中 / 待开始 / 已完成四个视图；需求、独立故事、缺陷分组展示。
 - **需求详情**：概设正文、详设文件树、故事列表、执行流程图、关联会话和属性面板。
-- **故事 / 缺陷详情**：正文、状态、运行记录，以及执行、取消、完成等人工动作。
+- **故事 / 缺陷详情**：正文、状态、运行记录、讨论会话列表，以及讨论、执行、取消、完成等人工动作。
 - **三档权限执行**：需求详情的故事行、故事页、缺陷页三处的「执行」按钮右侧带箭头菜单，可选「普通执行 / 仅查看执行 / 完全权限执行」。主按钮直接按「普通执行」启动；默认档不记忆，上一次选「完全权限执行」也不会留到下一次。会话以对应沙箱模式与审批策略启动，会话头部显示「普通 / 仅查看 / 完全权限」短标签（旧会话没有记录，不显示）。
 - **创建页**：选类型和工作区后直接开新会话，不需要手动挑 Agent。还可以附带文件：附件区整块可点击选择，也可以把文件直接拖进附件卡片，拖放与点选走同一套规则（图片按宿主会话上传的同一套规则校验，类型、单张大小、条数与总大小取自 `ctx.attachments.imageLimits`，不在本页另立白名单；其它类型的文件不设额外限制），不合规的文件逐条给出原因；已选文件可逐个移除，提交时与工作区、描述一起作为第一条消息的附件发进新会话。附件上传完成前提交按钮会拦住，避免丢附件。
 - **输入框「创建类型」**：空白会话下可切换需求 / 故事 / 缺陷；从需求详情发起的讨论会话还会显示「需求与概要设计」/「详细设计」/「故事拆分」，用于继续对应的讨论。
@@ -79,14 +79,16 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 | 项 | 位置 |
 | --- | --- |
 | 数据库 | `$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite` |
-| 需求 / 概设 | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/requirement.md` |
-| 详细设计 | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/docs/<doc>.md` |
-| 故事 | `<workspace>/.xirang-ai/dsh-teamflow/stories/<story>/story.md` |
-| 缺陷 | `<workspace>/.xirang-ai/dsh-teamflow/bugs/<bug>/bug.md` |
+| 文档根 | `$DSH_HOME/xirang-ai/dsh-teamflow/docs`（可用 `docsDir` 改到别处） |
+| 需求 / 概设 | `<docs>/requirements/<req>/requirement.md` |
+| 详细设计 | `<docs>/requirements/<req>/docs/<doc>.md` |
+| 故事 | `<docs>/stories/<story>/story.md` |
+| 缺陷 | `<docs>/bugs/<bug>/bug.md` |
 
-- 工作区根 `.gitignore` 会自动追加 `.xirang-ai/`，文档默认不进版本库。
-- 数据结构版本写在 `PRAGMA user_version`，当前为 `16`；启动时自动迁移，结构版本高于当前插件时拒绝启动。
-- 升级或重装前建议备份 `teamflow.sqlite` 与 `.xirang-ai/dsh-teamflow/`。
+- 文档与数据库同根，都归插件目录所有：用户项目仓库里不会出现 `.xirang-ai/`，也不会改写工作区 `.gitignore`。换工作区或换机器时，保留插件目录里的数据库与文档即可。
+- 数据结构版本写在 `PRAGMA user_version`，当前为 `17`；启动时自动迁移，结构版本高于当前插件时拒绝启动。
+- 升级或重装前备份 `teamflow.sqlite` 与 `docs/`（自定义了 `docsDir` 时备份该目录）。
+- 旧版本把正文放在工作区 `.xirang-ai/dsh-teamflow/` 下；升级后这些文档不会被自动搬迁，也不会再按旧路径读取，需要时请手动移入文档根。
 
 ## 配置
 
@@ -95,6 +97,7 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 | 字段 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `dataDir` | string | `''` | 数据目录；留空表示 `$DSH_HOME/xirang-ai/dsh-teamflow`，支持 `~` |
+| `docsDir` | string | `''` | 文档根；留空表示 `<dataDir>/docs`，支持绝对路径、相对路径与 `~/` |
 | `busyTimeoutMs` | number | `5000` | SQLite `busy_timeout`，多会话并发写时的等待上限（0–60000） |
 
 要覆盖默认值，编辑当前 profile 的用户配置层，例如 `$DSH_HOME/profiles/web/cordis.patch.yml`：
@@ -104,6 +107,7 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
   name: "@xirang-ai/dsh-teamflow"
   config:
     dataDir: "~/teamflow-data"
+    docsDir: "~/teamflow-docs"
     busyTimeoutMs: 10000
 ```
 

@@ -59,6 +59,7 @@ function storyRow(
     path: `.xirang-ai/dsh-teamflow/stories/${id}/story.md`,
     body: '',
     bodyMissing: false,
+    sessions: [],
   }
 }
 
@@ -77,6 +78,7 @@ function bugRow(id: string, createSessionId: string | null = null): WorkbenchSna
     updatedAt: '2026-11-07T04:00:00.000Z',
     body: '',
     bodyMissing: false,
+    sessions: [],
   }
 }
 
@@ -397,6 +399,7 @@ describe('session tab state', () => {
       updatedAt: '2026-11-07T04:00:00.000Z',
       body: '',
       bodyMissing: false,
+      sessions: [],
     })
     snapshot.runs.push(
       {

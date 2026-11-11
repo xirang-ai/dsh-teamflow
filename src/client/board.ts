@@ -14,7 +14,6 @@ import type {
   BugSeverity,
   BugStatus,
   DocKind,
-  RequirementSessionKind,
   RequirementStatus,
   RunStatus,
   StorySize,
@@ -90,6 +89,8 @@ export interface StoryNode {
   readonly lastRun?: { readonly status: RunStatus; readonly at: string }
   /** Every run for this story, newest first. */
   readonly runs: readonly RunNode[]
+  /** Confirmed discussions of this story, newest first. */
+  readonly sessions: readonly DiscussionSessionNode[]
 }
 
 /** One defect as the list and its surface show it. */
@@ -109,19 +110,22 @@ export interface BugNode {
   /** Conversation that created the defect, when the Host recorded one. */
   readonly createSessionId?: string
   readonly runs: readonly RunNode[]
+  /** Confirmed discussions of this defect, newest first. */
+  readonly sessions: readonly DiscussionSessionNode[]
 }
 
 /**
- * One conversation attached to a requirement.
+ * One conversation attached to a requirement, story or defect.
  *
  * `create` rows record the conversation that produced the requirement;
- * `design`, `detail` and `split` rows are outline-design, detailed-design and
- * story-splitting discussions and only appear once the Agent has confirmed the
- * browser-prepared binding.
+ * `design`, `detail` and `split` rows are requirement discussions, and
+ * `discuss` rows are story or defect discussions. All of them appear only once
+ * the Agent has confirmed the browser-prepared binding.
  */
-export interface RequirementSessionNode {
+export interface DiscussionSessionNode {
   readonly sessionId: string
-  readonly kind: RequirementSessionKind
+  /** `create` / `design` / `detail` / `split` for requirements, `discuss` otherwise. */
+  readonly kind: string
   /** ISO timestamp worth showing: linking time for discussions, creation for create rows. */
   readonly at: string
 }
@@ -156,7 +160,7 @@ export interface RequirementNode {
   readonly stories: readonly StoryNode[]
   readonly runs: readonly RunNode[]
   /** Sessions attached to this requirement, newest first. */
-  readonly sessions: readonly RequirementSessionNode[]
+  readonly sessions: readonly DiscussionSessionNode[]
 }
 
 /** A story with no requirement parent, listed next to the requirements. */
@@ -182,6 +186,23 @@ export interface Board {
   readonly requirements: readonly RequirementNode[]
   readonly standalone: readonly StandaloneStory[]
   readonly bugs: readonly BugNode[]
+}
+
+/** Wire sessions → panel rows, newest first as the Host returned them. */
+function discussionNodes(
+  sessions: readonly {
+    readonly sessionId: string
+    readonly kind: string
+    readonly preparedAt: string | null
+    readonly linkedAt: string | null
+    readonly createdAt: string
+  }[],
+): readonly DiscussionSessionNode[] {
+  return sessions.map((session) => ({
+    sessionId: session.sessionId,
+    kind: session.kind,
+    at: session.linkedAt ?? session.preparedAt ?? session.createdAt,
+  }))
 }
 
 /** Empty board, used before the first frame arrives and after a failure. */
@@ -405,6 +426,7 @@ export function buildBoard(snapshot: WorkbenchSnapshot): Board {
       bodyMissing: story.bodyMissing,
       ...(last === undefined ? {} : { lastRun: { status: last.status, at: last.at } }),
       runs,
+      sessions: discussionNodes(story.sessions),
     }
     if (story.requirementId === null) {
       standalone.push({ kind: 'story', id: story.id, workspaceId: node.workspaceId, story: node })
@@ -439,15 +461,9 @@ export function buildBoard(snapshot: WorkbenchSnapshot): Board {
             ? 'done'
             : 'ready'
     const branch = runs.find((run) => run.branch.length > 0)?.branch
-    const sessions = snapshot.requirementSessions
-      .filter((session) => session.requirementId === requirement.id)
-      .map(
-        (session): RequirementSessionNode => ({
-          sessionId: session.sessionId,
-          kind: session.kind,
-          at: session.linkedAt ?? session.preparedAt ?? session.createdAt,
-        }),
-      )
+    const sessions = discussionNodes(
+      snapshot.requirementSessions.filter((session) => session.requirementId === requirement.id),
+    )
     const latestDesign = sessions.find((session) => session.kind === 'design')
 
     return {
@@ -488,6 +504,7 @@ export function buildBoard(snapshot: WorkbenchSnapshot): Board {
       ...(last?.sessionId === undefined ? {} : { sessionId: last.sessionId }),
       ...(bug.createSessionId === null ? {} : { createSessionId: bug.createSessionId }),
       runs,
+      sessions: discussionNodes(bug.sessions),
     }
   })
 

@@ -4,12 +4,12 @@
 
 Teamflow (`@xirang-ai/dsh-teamflow`) is a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin that turns **requirements → high-level design → detailed design → stories → development runs → bug fixes** into a persistent, resumable pipeline. It also adds a team workbench called **Xirang Workbench** to the DSH Web UI.
 
-Version: **`0.1.1`** (adds drag and drop to the create page attachments; see [CHANGELOG.md](CHANGELOG.md)).
+Version: **`0.1.2`** (documents move into the plugin directory; stories and bugs gain discussion sessions; see [CHANGELOG.md](CHANGELOG.md)).
 
-- Data lives in SQLite; documents live in the workspace, so closing a session does not lose progress.
+- Data lives in SQLite; documents live in the plugin directory (default `<dataDir>/docs`), so closing a session does not lose progress.
 - Five agent presets cover requirements, stories, bugs, development, and detailed design. Each preset controls its own tool boundary.
 - The workbench provides lists, detail pages, a flow chart, a create page, a read-only session tab, and guarded deletion.
-- Nineteen `teamflow_*` tools write interview and development results back to the database and workspace documents.
+- Twenty `teamflow_*` tools write interview and development results back to the database and plugin documents.
 
 ## Requirements
 
@@ -67,7 +67,7 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 
 - **Lists**: four views (open / in progress / ready / completed) across requirements, standalone stories, and bugs.
 - **Requirement detail**: high-level design, detailed-design file tree, story list, execution flow chart, linked sessions, and a properties panel.
-- **Story / bug detail**: body, status, run history, and manual actions such as run, cancel, and complete.
+- **Story / bug detail**: body, status, run history, discussion sessions, and manual actions such as discuss, run, cancel, and complete.
 - **Three permission tiers**: the **Run** button on a story row, the story page, and the bug page has an arrow menu for **Normal run / Read-only run / Full permission run**. The main button always starts a normal run; the choice is not remembered, so picking full permission once does not carry over. The session starts with the matching sandbox mode and approval policy, and its header shows a short Normal / Read-only / Full badge (sessions started before this feature have no record and show no badge).
 - **Create page**: pick a type and workspace to start a session without choosing an agent manually. Files can be attached too: the attachment card is both a click target and a drop zone, and a drop goes through the same rules as a picker selection (images are checked against the same rules the session composer uses — type, per-file size, count and total taken from `ctx.attachments.imageLimits`, never a second list defined here; other file types carry no extra limits), with a reason for every refused file. Each picked file can be removed, and the submission sends them as attachments on the new conversation's first message next to the workspace and description. The submit button is held back until uploading finishes so no attachment is lost.
 - **Composer type picker**: an empty session switches between requirement / story / bug; a discussion session started from a requirement detail also offers requirement & outline / detailed design / story splitting.
@@ -79,14 +79,16 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 | Item | Location |
 | --- | --- |
 | Database | `$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite` |
-| Requirement / high-level design | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/requirement.md` |
-| Detailed design | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/docs/<doc>.md` |
-| Story | `<workspace>/.xirang-ai/dsh-teamflow/stories/<story>/story.md` |
-| Bug | `<workspace>/.xirang-ai/dsh-teamflow/bugs/<bug>/bug.md` |
+| Document root | `$DSH_HOME/xirang-ai/dsh-teamflow/docs` (override with `docsDir`) |
+| Requirement / high-level design | `<docs>/requirements/<req>/requirement.md` |
+| Detailed design | `<docs>/requirements/<req>/docs/<doc>.md` |
+| Story | `<docs>/stories/<story>/story.md` |
+| Bug | `<docs>/bugs/<bug>/bug.md` |
 
-- The workspace root `.gitignore` gets an `.xirang-ai/` entry automatically, so documents stay out of version control by default.
-- The schema version lives in `PRAGMA user_version` and is currently `16`. Migrations run at startup; a database newer than the installed plugin refuses to start.
-- Back up `teamflow.sqlite` and `.xirang-ai/dsh-teamflow/` before upgrading or reinstalling.
+- Documents live next to the database, both owned by the plugin: the user's project repository never gets a `.xirang-ai/` directory and its `.gitignore` is never rewritten. Keep the plugin directory when switching workspaces or machines.
+- The schema version lives in `PRAGMA user_version` and is currently `17`. Migrations run at startup; a database newer than the installed plugin refuses to start.
+- Back up `teamflow.sqlite` and `docs/` (or the configured `docsDir`) before upgrading or reinstalling.
+- Older versions stored bodies under the workspace's `.xirang-ai/dsh-teamflow/`. Upgrading neither moves nor reads those documents; move them into the document root by hand if you still need them.
 
 ## Configuration
 
@@ -95,6 +97,7 @@ The bundle config layer provides these defaults:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `dataDir` | string | `''` | Data directory; empty means `$DSH_HOME/xirang-ai/dsh-teamflow`. Supports `~`. |
+| `docsDir` | string | `''` | Document root; empty means `<dataDir>/docs`. Accepts absolute paths, paths relative to the working directory, and `~/`. |
 | `busyTimeoutMs` | number | `5000` | SQLite `busy_timeout` for concurrent writers (0–60000). |
 
 To override them, edit the user config layer of the current profile, for example `$DSH_HOME/profiles/web/cordis.patch.yml`:
@@ -104,6 +107,7 @@ To override them, edit the user config layer of the current profile, for example
   name: "@xirang-ai/dsh-teamflow"
   config:
     dataDir: "~/teamflow-data"
+    docsDir: "~/teamflow-docs"
     busyTimeoutMs: 10000
 ```
 
