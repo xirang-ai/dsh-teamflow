@@ -24,7 +24,6 @@ import { isPermissionTier, type PermissionTier } from '../permission-tier.ts'
 import {
   docPath,
   dropStagedDoc,
-  ensureDocTree,
   pruneEmptyDirectories,
   readDoc,
   restoreStagedDoc,
@@ -56,6 +55,8 @@ import {
   type DeletePreviewItem,
   type DeleteReport,
   type DeleteTarget,
+  type DiscussionSession,
+  type DiscussionSubjectType,
   type CreateBugInput,
   type CreateDesignDocInput,
   type CreateRequirementInput,
@@ -123,11 +124,10 @@ type Row = Record<string, unknown>
 /** Construction options for {@link WorkflowStore}. */
 export interface WorkflowStoreOptions {
   /**
-   * Root that holds `requirements/`, `stories/` and `bugs/` when a workspace
-   * directory is not known yet. Production wiring passes the
-   * workspace path instead (see {@link WorkflowStore.registerWorkspace}).
+   * Absolute document root that holds `requirements/`, `stories/` and
+   * `bugs/`. Every body lives here; records only store the root-relative path.
    */
-  readonly docsRoot?: string
+  readonly docsRoot: string
   /** Resolver used before the registry; lets the Host provide the live path. */
   readonly workspaceRoot?: (workspaceId: string) => string | undefined
 
@@ -180,9 +180,21 @@ function toDesignDoc(row: Row): DesignDoc {
   }
 }
 
+function toDiscussionSession(row: Row): DiscussionSession {
+  return {
+    subjectType: text(row, 'subject_type') as DiscussionSubjectType,
+    subjectId: text(row, 'subject_id'),
+    sessionId: text(row, 'session_id'),
+    kind: text(row, 'kind'),
+    preparedAt: nullableText(row, 'prepared_at'),
+    linkedAt: nullableText(row, 'linked_at'),
+    createdAt: text(row, 'created_at'),
+  }
+}
+
 function toRequirementSession(row: Row): RequirementSession {
   return {
-    requirementId: text(row, 'requirement_id'),
+    requirementId: text(row, 'subject_id'),
     sessionId: text(row, 'session_id'),
     kind: text(row, 'kind') as RequirementSession['kind'],
     preparedAt: nullableText(row, 'prepared_at'),
@@ -320,23 +332,22 @@ export class WorkflowStore {
   readonly #workspaceRoot: (workspaceId: string) => string | undefined
   readonly #warn: (message: string) => void
 
-  constructor(db: DatabaseSync, options: WorkflowStoreOptions = {}) {
+  constructor(db: DatabaseSync, options: WorkflowStoreOptions) {
     this.#db = db
     this.#now = options.now ?? (() => new Date().toISOString())
-    this.#docsRoot = options.docsRoot ?? ''
+    this.#docsRoot = options.docsRoot
     this.#workspaceRoot = options.workspaceRoot ?? (() => undefined)
     this.#warn = options.warn ?? (() => {})
   }
 
   /**
-   * Remember where a workspace lives on disk. Documents are written into that
-   * directory, so this must be called before the first file-backed write;
-   * repeated calls with the same path are no-ops.
+   * Remember where a workspace lives on disk. Document bodies no longer live
+   * there, but the path is still recorded for display and for future
+   * workspace-scoped features; repeated calls with the same path are no-ops.
    */
   registerWorkspace(workspaceId: string, path: string): void {
     const id = requiredText(workspaceId, 'workspaceId')
     const root = requiredText(path, 'path')
-    ensureDocTree(root)
     const now = this.#now()
     this.#db
       .prepare(
@@ -346,46 +357,27 @@ export class WorkflowStore {
       .run(id, root, now, now)
   }
 
-  /** Directory a workspace's documents live in, or null when unknown. */
+  /** Directory a registered workspace lives in, or null when unknown. */
   workspacePath(workspaceId: string): string | null {
     const row = this.#db.prepare('SELECT path FROM workspaces WHERE workspace_id = ?').get(workspaceId)
     if (row !== undefined) return text(row, 'path')
-    return this.#workspaceRoot(workspaceId) ?? (this.#docsRoot.length === 0 ? null : this.#docsRoot)
+    return this.#workspaceRoot(workspaceId) ?? null
   }
 
   /**
-   * Read a document body by its workspace-relative path.
+   * Read a document body by its document-root-relative path.
    *
    * `null` means the file does not exist; `''` means it exists and is empty.
-   * A workspace without a directory is a configuration error, not a missing
-   * document, so it is reported as `file_error` instead of being folded into
-   * either empty result.
+   * Every record resolves against the one configured document root, so a
+   * legacy path simply misses instead of falling back to a workspace.
    */
-  readContent(workspaceId: string, relativePath: string): string | null {
-    const root = this.workspacePath(workspaceId)
-    if (root === null) {
-      throw new WorkflowError(
-        'file_error',
-        `workspace ${workspaceId} has no directory yet; call registerWorkspace first`,
-      )
-    }
-    return readDoc(root, relativePath)
+  readContent(relativePath: string): string | null {
+    return readDoc(this.#docsRoot, relativePath)
   }
 
   /** Rewrite a document body; the path comes from the row, so it is always current. */
-  writeContent(workspaceId: string, relativePath: string, body: string): void {
-    writeDoc(this.#root(workspaceId), relativePath, body)
-  }
-
-  #root(workspaceId: string): string {
-    const root = this.workspacePath(workspaceId)
-    if (root === null) {
-      throw new WorkflowError(
-        'invalid_input',
-        `workspace ${workspaceId} has no directory yet; call registerWorkspace first`,
-      )
-    }
-    return root
+  writeContent(relativePath: string, body: string): void {
+    writeDoc(this.#docsRoot, relativePath, body)
   }
 
   /**
@@ -394,12 +386,11 @@ export class WorkflowStore {
    */
   #persistDoc(
     kind: DocFileKind,
-    workspaceId: string,
     ids: { id: string; requirementId?: string },
     body: string,
   ): string {
     const relative = docPath(kind, ids)
-    writeDoc(this.#root(workspaceId), relative, body)
+    writeDoc(this.#docsRoot, relative, body)
     return relative
   }
 
@@ -431,33 +422,86 @@ export class WorkflowStore {
   /**
    * Register a browser-created session as a pending discussion for a requirement.
    *
-   * The browser creates the session first, then calls this before the user can
-   * send the first message. The row stays invisible in `listBoard` until the
-   * Agent confirms it through {@link linkRequirementSession}.
+   * Kept as a thin wrapper over {@link prepareDiscussionSession} so the
+   * requirement page and its tests keep their existing shape.
    */
   prepareRequirementSession(
     requirementId: string,
     sessionId: string,
     kind: RequirementSessionKind = 'design',
   ): RequirementSession {
+    const session = this.prepareDiscussionSession('requirement', requirementId, sessionId, kind)
+    return {
+      requirementId: session.subjectId,
+      sessionId: session.sessionId,
+      kind: session.kind as RequirementSessionKind,
+      preparedAt: session.preparedAt,
+      linkedAt: session.linkedAt,
+      createdAt: session.createdAt,
+    }
+  }
+
+  /**
+   * Register a browser-created session as a pending discussion for a subject.
+   *
+   * The browser creates the session first, then calls this before the user can
+   * send the first message. The row stays invisible in `listBoard` until the
+   * Agent confirms it through `teamflow_link_session`; this method never writes
+   * `linked_at`, so the client cannot skip Agent confirmation.
+   */
+  prepareDiscussionSession(
+    subjectType: DiscussionSubjectType,
+    subjectId: string,
+    sessionId: string,
+    kind: string,
+  ): DiscussionSession {
+    if (subjectType !== 'requirement' && subjectType !== 'story' && subjectType !== 'bug') {
+      throw new WorkflowError(
+        'invalid_input',
+        `prepareDiscussionSession 参数非法：subjectType=${String(subjectType)}，期望 requirement|story|bug`,
+      )
+    }
+    const subject = (subjectId ?? '').trim()
+    if (subject.length === 0) {
+      throw new WorkflowError('invalid_input', 'prepareDiscussionSession 参数非法：subjectId 为空')
+    }
+    const session = (sessionId ?? '').trim()
+    if (session.length === 0) {
+      throw new WorkflowError('invalid_input', 'prepareDiscussionSession 参数非法：sessionId 为空')
+    }
+    const discussionKind = (kind ?? '').trim()
+    if (discussionKind.length === 0) {
+      throw new WorkflowError('invalid_input', 'prepareDiscussionSession 参数非法：kind 为空')
+    }
+    if (
+      subjectType === 'requirement' &&
+      discussionKind !== 'design' &&
+      discussionKind !== 'detail' &&
+      discussionKind !== 'split'
+    ) {
+      throw new WorkflowError(
+        'invalid_input',
+        `kind must be design, detail or split, got ${String(kind)}`,
+      )
+    }
     return withTransaction(this.#db, () => {
-      const requirement = this.#requireRequirement(requirementId)
-      const session = requiredText(sessionId, 'sessionId')
-      if (kind !== 'design' && kind !== 'detail' && kind !== 'split') {
+      this.#requireSubject(subjectType, subject)
+      const rows = this.#db
+        .prepare('SELECT * FROM discussion_sessions WHERE session_id = ?')
+        .all(session) as Row[]
+      if (rows.length > 1) {
         throw new WorkflowError(
           'invalid_input',
-          `kind must be design, detail or split, got ${String(kind)}`,
+          `session ${session} is already bound to ${rows.length} discussions`,
         )
       }
-      const existing = this.#db
-        .prepare('SELECT * FROM requirement_sessions WHERE session_id = ?')
-        .get(session)
+      const existing = rows[0]
       if (existing !== undefined) {
-        const row = toRequirementSession(existing)
-        if (row.requirementId !== requirement.id) {
+        const row = toDiscussionSession(existing)
+        if (row.subjectType !== subjectType || row.subjectId !== subject) {
           throw new WorkflowError(
             'invalid_input',
-            `session ${session} already belongs to requirement ${row.requirementId}`,
+            `session ${session} already belongs to ${row.subjectType} ${row.subjectId}`,
           )
         }
         if (row.kind === 'create') {
@@ -466,31 +510,77 @@ export class WorkflowStore {
             `session ${session} created its requirement, so it cannot also be a discussion`,
           )
         }
-        if (row.kind !== kind) {
+        if (row.kind !== discussionKind) {
           throw new WorkflowError(
             'invalid_input',
             `session ${session} is already prepared as a ${row.kind} discussion`,
           )
         }
+        // Repeated prepares keep the original timestamp; only the first write
+        // records when the browser started the conversation.
         return row
       }
       const now = this.#now()
       this.#db
         .prepare(
-          `INSERT INTO requirement_sessions
-             (requirement_id, session_id, kind, prepared_at, linked_at, created_at)
-           VALUES (?, ?, ?, ?, NULL, ?)`,
+          `INSERT INTO discussion_sessions
+             (subject_type, subject_id, session_id, kind, prepared_at, linked_at, created_at)
+           VALUES (?, ?, ?, ?, ?, NULL, ?)
+           ON CONFLICT (subject_type, subject_id, session_id)
+           DO UPDATE SET prepared_at = excluded.prepared_at`,
         )
-        .run(requirement.id, session, kind, now, now)
-      return this.#requireRequirementSession(session)
+        .run(subjectType, subject, session, discussionKind, now, now)
+      return this.#requireDiscussionSession(session, subjectType, subject)
     })
   }
 
   /**
-   * Confirm the current session as a discussion of the requirement prepared for it.
+   * Confirm the current session as the discussion it was prepared for.
    *
-   * Called by `teamflow_link_requirement_session`; repeated calls are idempotent
-   * so a model retry cannot create duplicate history rows.
+   * Called by `teamflow_link_session`; repeated calls are idempotent so a model
+   * retry cannot rewrite the confirmation time.
+   */
+  linkDiscussionSession(sessionId: string): DiscussionSession {
+    return withTransaction(this.#db, () => {
+      const session = requiredText(sessionId, 'sessionId')
+      const rows = this.#db
+        .prepare('SELECT * FROM discussion_sessions WHERE session_id = ?')
+        .all(session) as Row[]
+      if (rows.length === 0) {
+        throw new WorkflowError(
+          'not_found',
+          `teamflow_link_session 未能登记：当前会话 ${session} 没有与任何需求、故事或缺陷绑定`,
+        )
+      }
+      if (rows.length > 1) {
+        throw new WorkflowError(
+          'invalid_input',
+          `teamflow_link_session 未能登记：数据异常：当前会话 ${session} 绑定到 ${rows.length} 个对象`,
+        )
+      }
+      const current = toDiscussionSession(rows[0] as Row)
+      if (current.kind === 'create') {
+        throw new WorkflowError(
+          'invalid_input',
+          `session ${session} created a requirement and is not a discussion`,
+        )
+      }
+      if (current.linkedAt !== null) return current
+      this.#db
+        .prepare(
+          `UPDATE discussion_sessions SET linked_at = ?
+            WHERE subject_type = ? AND subject_id = ? AND session_id = ?`,
+        )
+        .run(this.#now(), current.subjectType, current.subjectId, session)
+      return this.#requireDiscussionSession(session, current.subjectType, current.subjectId)
+    })
+  }
+
+  /**
+   * Confirm the current session as a requirement discussion.
+   *
+   * Kept for `teamflow_link_requirement_session`; new callers use
+   * {@link linkDiscussionSession}.
    */
   linkRequirementSession(sessionId: string): RequirementSession {
     return withTransaction(this.#db, () => {
@@ -505,17 +595,17 @@ export class WorkflowStore {
       if (current.linkedAt !== null) return current
       this.#db
         .prepare(
-          "UPDATE requirement_sessions SET linked_at = ? WHERE session_id = ? AND kind IN ('design','detail','split')",
+          "UPDATE discussion_sessions SET linked_at = ? WHERE subject_type = 'requirement' AND session_id = ? AND kind IN ('design','detail','split')",
         )
         .run(this.#now(), session)
       return this.#requireRequirementSession(session)
     })
   }
 
-  /** Pending or linked conversation prepared for one session, or null. */
+  /** Pending or linked requirement conversation prepared for one session, or null. */
   getRequirementSession(sessionId: string): RequirementSession | null {
     const row = this.#db
-      .prepare('SELECT * FROM requirement_sessions WHERE session_id = ?')
+      .prepare("SELECT * FROM discussion_sessions WHERE subject_type = 'requirement' AND session_id = ?")
       .get(sessionId)
     return row === undefined ? null : toRequirementSession(row)
   }
@@ -523,16 +613,52 @@ export class WorkflowStore {
   /** The requirement linked to a session, whichever kind of link it is. */
   getRequirementBySession(sessionId: string): Requirement | null {
     const row = this.#db
-      .prepare('SELECT requirement_id FROM requirement_sessions WHERE session_id = ?')
+      .prepare("SELECT subject_id FROM discussion_sessions WHERE subject_type = 'requirement' AND session_id = ?")
       .get(sessionId)
-    return row === undefined ? null : this.getRequirement(text(row, 'requirement_id'))
+    return row === undefined ? null : this.getRequirement(text(row, 'subject_id'))
+  }
+
+  /** The discussion row bound to one session, or null when none exists. */
+  getDiscussionSession(sessionId: string): DiscussionSession | null {
+    const rows = this.#db
+      .prepare('SELECT * FROM discussion_sessions WHERE session_id = ?')
+      .all(sessionId) as Row[]
+    return rows.length === 1 ? toDiscussionSession(rows[0] as Row) : null
   }
 
   /**
-   * Conversations under one requirement, newest linked first.
+   * Discussions under one subject, newest linked first.
    *
-   * Pending design rows are excluded by default so the workbench never shows a
-   * session the Agent has not started; tests and diagnostics can opt in.
+   * Pending rows are excluded by default so the workbench never shows a session
+   * the Agent has not started; tests and diagnostics can opt in.
+   */
+  listDiscussionSessions(
+    subjectType: DiscussionSubjectType,
+    subjectId: string,
+    options: { readonly includeUnlinked?: boolean; readonly kinds?: readonly string[] } = {},
+  ): DiscussionSession[] {
+    const values: string[] = [subjectType, subjectId]
+    let kindsClause = ''
+    if (options.kinds !== undefined && options.kinds.length > 0) {
+      kindsClause = ` AND kind IN (${options.kinds.map(() => '?').join(',')})`
+      values.push(...options.kinds)
+    }
+    const rows = this.#db
+      .prepare(
+        `SELECT * FROM discussion_sessions
+          WHERE subject_type = ? AND subject_id = ?
+            AND (linked_at IS NOT NULL OR ? = 1)${kindsClause}
+          ORDER BY COALESCE(linked_at, prepared_at, created_at) DESC, session_id`,
+      )
+      .all(...values.slice(0, 2), options.includeUnlinked === true ? 1 : 0, ...values.slice(2)) as Row[]
+    return rows.map(toDiscussionSession)
+  }
+
+  /**
+   * Requirement conversations under one requirement, newest linked first.
+   *
+   * The `create` row is always included: it explains where the requirement came
+   * from even though the Agent never confirms it.
    */
   listRequirementSessions(
     requirementId: string,
@@ -541,8 +667,8 @@ export class WorkflowStore {
     this.#requireRequirement(requirementId)
     const rows = this.#db
       .prepare(
-        `SELECT * FROM requirement_sessions
-          WHERE requirement_id = ?
+        `SELECT * FROM discussion_sessions
+          WHERE subject_type = 'requirement' AND subject_id = ?
             AND (kind = 'create' OR linked_at IS NOT NULL OR ? = 1)
           ORDER BY kind, COALESCE(linked_at, prepared_at, created_at) DESC, session_id`,
       )
@@ -700,9 +826,16 @@ export class WorkflowStore {
       .all() as Row[]
     const requirementSessions = this.#db
       .prepare(
-        `SELECT * FROM requirement_sessions
-          WHERE kind = 'create' OR linked_at IS NOT NULL
+        `SELECT * FROM discussion_sessions
+          WHERE subject_type = 'requirement' AND (kind = 'create' OR linked_at IS NOT NULL)
           ORDER BY COALESCE(linked_at, created_at) DESC, session_id`,
+      )
+      .all() as Row[]
+    const discussionSessions = this.#db
+      .prepare(
+        `SELECT * FROM discussion_sessions
+          WHERE subject_type IN ('story', 'bug') AND linked_at IS NOT NULL
+          ORDER BY COALESCE(linked_at, prepared_at, created_at) DESC, session_id`,
       )
       .all() as Row[]
 
@@ -716,6 +849,7 @@ export class WorkflowStore {
         (row): DocStoryLink => ({ docId: text(row, 'doc_id'), storyId: text(row, 'story_id') }),
       ),
       requirementSessions: requirementSessions.map(toRequirementSession),
+      discussionSessions: discussionSessions.map(toDiscussionSession),
     }
   }
 
@@ -732,7 +866,7 @@ export class WorkflowStore {
       const now = this.#now()
       const id = newId('requirement')
       const workspaceId = requiredText(input.workspaceId, 'workspaceId')
-      const contentPath = this.#persistDoc('requirement', workspaceId, { id }, optionalText(input.content))
+      const contentPath = this.#persistDoc('requirement', { id }, optionalText(input.content))
       const requirement: Requirement = {
         id,
         workspaceId,
@@ -860,7 +994,6 @@ export class WorkflowStore {
       const id = newId('designDoc')
       const contentPath = this.#persistDoc(
         'designDoc',
-        requirement.workspaceId,
         { id, requirementId: requirement.id },
         optionalText(input.content),
       )
@@ -905,8 +1038,7 @@ export class WorkflowStore {
     return withTransaction(this.#db, () => {
       const current = this.#requireDesignDoc(id)
       if (input.content !== undefined) {
-        const requirement = this.#requireRequirement(current.requirementId)
-        writeDoc(this.#root(requirement.workspaceId), current.contentPath, optionalText(input.content))
+        writeDoc(this.#docsRoot, current.contentPath, optionalText(input.content))
       }
       const next: DesignDoc = {
         ...current,
@@ -1027,7 +1159,7 @@ export class WorkflowStore {
 
       const now = this.#now()
       const id = newId('story')
-      const contentPath = this.#persistDoc('story', storyWorkspaceId, { id }, optionalText(input.content))
+      const contentPath = this.#persistDoc('story', { id }, optionalText(input.content))
       const sessionId = optionalText(input.sessionId)
       const story: Story = {
         id,
@@ -1083,7 +1215,7 @@ export class WorkflowStore {
       const size = input.size === undefined ? current.size : sizeOf(input.size)
       const sortOrder = input.sortOrder === undefined ? current.sortOrder : sortOrderOf(input.sortOrder)
       if (input.content !== undefined) {
-        writeDoc(this.#root(current.workspaceId), current.contentPath, optionalText(input.content))
+        writeDoc(this.#docsRoot, current.contentPath, optionalText(input.content))
       }
       this.#db
         .prepare('UPDATE stories SET title = ?, size = ?, sort_order = ?, updated_at = ? WHERE id = ?')
@@ -1388,7 +1520,7 @@ export class WorkflowStore {
       const bugWorkspaceId = requiredText(input.workspaceId, 'workspaceId')
       const now = this.#now()
       const id = newId('bug')
-      const contentPath = this.#persistDoc('bug', bugWorkspaceId, { id }, optionalText(input.content))
+      const contentPath = this.#persistDoc('bug', { id }, optionalText(input.content))
       const sessionId = optionalText(input.sessionId)
       const bug: Bug = {
         id,
@@ -1435,7 +1567,7 @@ export class WorkflowStore {
       const title = input.title === undefined ? current.title : requiredText(input.title, 'title')
       const severity = input.severity === undefined ? current.severity : severityOf(input.severity)
       if (input.content !== undefined) {
-        writeDoc(this.#root(current.workspaceId), current.contentPath, optionalText(input.content))
+        writeDoc(this.#docsRoot, current.contentPath, optionalText(input.content))
       }
       this.#db
         .prepare('UPDATE bugs SET title = ?, severity = ?, updated_at = ? WHERE id = ?')
@@ -1535,15 +1667,14 @@ export class WorkflowStore {
           )
         }
 
-        for (const file of this.#filesToDelete(target)) {
-          const root = this.#root(file.workspaceId)
+        for (const relative of this.#filesToDelete(target)) {
           try {
-            const doc = stageDocDeletion(root, file.relative)
-            if (doc !== null) staged.push({ root, doc })
+            const doc = stageDocDeletion(this.#docsRoot, relative)
+            if (doc !== null) staged.push({ root: this.#docsRoot, doc })
           } catch (error) {
             throw new WorkflowError(
               'file_error',
-              `could not stage ${file.relative} for deletion: ${describeError(error)}`,
+              `could not stage ${relative} for deletion: ${describeError(error)}`,
             )
           }
         }
@@ -1775,23 +1906,14 @@ export class WorkflowStore {
     }
   }
 
-  /** Files (workspace + relative path) that a successful delete must remove. */
-  #filesToDelete(target: DeleteTarget): { readonly workspaceId: string; readonly relative: string }[] {
-    if (target.kind === 'story') {
-      const story = this.#requireStory(target.id)
-      return [{ workspaceId: story.workspaceId, relative: story.contentPath }]
-    }
-    if (target.kind === 'bug') {
-      const bug = this.#requireBug(target.id)
-      return [{ workspaceId: bug.workspaceId, relative: bug.contentPath }]
-    }
+  /** Document-root-relative paths that a successful delete must remove. */
+  #filesToDelete(target: DeleteTarget): string[] {
+    if (target.kind === 'story') return [this.#requireStory(target.id).contentPath]
+    if (target.kind === 'bug') return [this.#requireBug(target.id).contentPath]
     const requirement = this.#requireRequirement(target.id)
     return [
-      { workspaceId: requirement.workspaceId, relative: requirement.contentPath },
-      ...this.listDesignDocs(requirement.id).map((doc) => ({
-        workspaceId: requirement.workspaceId,
-        relative: doc.contentPath,
-      })),
+      requirement.contentPath,
+      ...this.listDesignDocs(requirement.id).map((doc) => doc.contentPath),
     ]
   }
 
@@ -1874,13 +1996,20 @@ export class WorkflowStore {
     return toRequirement(row)
   }
 
+  #requireSubject(subjectType: DiscussionSubjectType, subjectId: string): void {
+    const table =
+      subjectType === 'requirement' ? 'requirements' : subjectType === 'story' ? 'stories' : 'bugs'
+    const row = this.#db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(subjectId)
+    if (row === undefined) throw notFound(subjectType, subjectId)
+  }
+
   #bindRequirementSessionInTx(
     requirementId: string,
     sessionId: string,
     createdAt: string,
   ): RequirementSession {
     const existing = this.#db
-      .prepare('SELECT * FROM requirement_sessions WHERE session_id = ?')
+      .prepare("SELECT * FROM discussion_sessions WHERE subject_type = 'requirement' AND session_id = ?")
       .get(sessionId)
     if (existing !== undefined) {
       const row = toRequirementSession(existing)
@@ -1894,9 +2023,9 @@ export class WorkflowStore {
     }
     this.#db
       .prepare(
-        `INSERT INTO requirement_sessions
-           (requirement_id, session_id, kind, prepared_at, linked_at, created_at)
-         VALUES (?, ?, 'create', NULL, NULL, ?)`,
+        `INSERT INTO discussion_sessions
+           (subject_type, subject_id, session_id, kind, prepared_at, linked_at, created_at)
+         VALUES ('requirement', ?, ?, 'create', NULL, NULL, ?)`,
       )
       .run(requirementId, sessionId, createdAt)
     return {
@@ -1911,7 +2040,7 @@ export class WorkflowStore {
 
   #requireRequirementSession(sessionId: string): RequirementSession {
     const row = this.#db
-      .prepare('SELECT * FROM requirement_sessions WHERE session_id = ?')
+      .prepare("SELECT * FROM discussion_sessions WHERE subject_type = 'requirement' AND session_id = ?")
       .get(sessionId)
     if (row === undefined) {
       throw new WorkflowError(
@@ -1920,6 +2049,26 @@ export class WorkflowStore {
       )
     }
     return toRequirementSession(row)
+  }
+
+  #requireDiscussionSession(
+    sessionId: string,
+    subjectType: DiscussionSubjectType,
+    subjectId: string,
+  ): DiscussionSession {
+    const row = this.#db
+      .prepare(
+        `SELECT * FROM discussion_sessions
+          WHERE subject_type = ? AND subject_id = ? AND session_id = ?`,
+      )
+      .get(subjectType, subjectId, sessionId)
+    if (row === undefined) {
+      throw new WorkflowError(
+        'not_found',
+        `session ${sessionId} is not prepared for a ${subjectType} discussion`,
+      )
+    }
+    return toDiscussionSession(row)
   }
 
   #requireStory(id: string): Story {
@@ -1945,7 +2094,7 @@ export class WorkflowStore {
     const title = input.title === undefined ? current.title : requiredText(input.title, 'title')
     const summary = input.summary === undefined ? current.summary : optionalText(input.summary)
     if (input.content !== undefined) {
-      writeDoc(this.#root(current.workspaceId), current.contentPath, optionalText(input.content))
+      writeDoc(this.#docsRoot, current.contentPath, optionalText(input.content))
     }
     this.#db
       .prepare('UPDATE requirements SET title = ?, summary = ?, updated_at = ? WHERE id = ?')

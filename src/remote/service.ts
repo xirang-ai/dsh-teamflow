@@ -22,7 +22,14 @@ import {
   type PermissionTier,
 } from '../permission-tier.ts'
 import { WorkflowError } from '../store/model.ts'
-import type { DeletePreview, DeleteReport, DeleteTarget, RequirementSessionKind } from '../store/model.ts'
+import type {
+  DeletePreview,
+  DeleteReport,
+  DeleteTarget,
+  DiscussionSession,
+  DiscussionSubjectType,
+  RequirementSessionKind,
+} from '../store/model.ts'
 import type { WorkflowStore } from '../store/workflow.ts'
 import { NAMESPACE, SERVICE_KEY } from './contract.ts'
 import type {
@@ -30,6 +37,7 @@ import type {
   BugRunReply,
   BugStatusReply,
   CancelRunReply,
+  DiscussionSessionReply,
   DocBody,
   RequirementSessionReply,
   RequirementStatusReply,
@@ -47,11 +55,33 @@ import type {
  */
 function readBody(
   workflow: WorkflowStore,
-  workspaceId: string,
   path: string,
 ): { readonly body: string; readonly bodyMissing: boolean } {
-  const body = workflow.readContent(workspaceId, path)
+  const body = workflow.readContent(path)
   return body === null ? { body: '', bodyMissing: true } : { body, bodyMissing: false }
+}
+
+/** Confirmed discussions of one story or defect, newest first. */
+function discussionsFor(
+  rows: readonly DiscussionSession[],
+  subjectType: DiscussionSubjectType,
+  subjectId: string,
+): readonly {
+  sessionId: string
+  kind: string
+  preparedAt: string | null
+  linkedAt: string | null
+  createdAt: string
+}[] {
+  return rows
+    .filter((row) => row.subjectType === subjectType && row.subjectId === subjectId)
+    .map((row) => ({
+      sessionId: row.sessionId,
+      kind: row.kind,
+      preparedAt: row.preparedAt,
+      linkedAt: row.linkedAt,
+      createdAt: row.createdAt,
+    }))
 }
 
 /**
@@ -124,7 +154,7 @@ export class WorkbenchService extends TypertRemoteService {
           status: requirement.status,
           updatedAt: requirement.updatedAt,
           path: requirement.contentPath,
-          ...readBody(this.workflow, requirement.workspaceId, requirement.contentPath),
+          ...readBody(this.workflow, requirement.contentPath),
           completedAt: requirement.completedAt,
         })),
         stories: rows.stories.map((story) => ({
@@ -138,10 +168,11 @@ export class WorkbenchService extends TypertRemoteService {
           createdAt: story.createdAt,
           updatedAt: story.updatedAt,
           path: story.contentPath,
-          ...readBody(this.workflow, story.workspaceId, story.contentPath),
+          ...readBody(this.workflow, story.contentPath),
           doneAt: story.doneAt,
           completedAt: story.completedAt,
           createSessionId: story.createSessionId,
+          sessions: discussionsFor(rows.discussionSessions, 'story', story.id),
         })),
         docs: rows.docs.map((doc) => ({
           id: doc.id,
@@ -162,10 +193,11 @@ export class WorkbenchService extends TypertRemoteService {
           status: bug.status,
           resolution: bug.resolution,
           updatedAt: bug.updatedAt,
-          ...readBody(this.workflow, bug.workspaceId, bug.contentPath),
+          ...readBody(this.workflow, bug.contentPath),
           fixedAt: bug.fixedAt,
           completedAt: bug.completedAt,
           createSessionId: bug.createSessionId,
+          sessions: discussionsFor(rows.discussionSessions, 'bug', bug.id),
         })),
         runs: rows.runs.map((run) => ({
           id: run.id,
@@ -446,6 +478,41 @@ export class WorkbenchService extends TypertRemoteService {
   }
 
   /**
+   * Register a newly created conversation as a pending discussion of any subject.
+   *
+   * Same two-phase contract as {@link prepareRequirementSession}: the Agent
+   * confirms with `teamflow_link_session`, and this method never writes the
+   * confirmation time itself.
+   * @param subjectType - requirement, story or bug.
+   * @param subjectId - record the discussion belongs to.
+   * @param sessionId - session created by the browser for this discussion.
+   * @param kind - `discuss` for stories and defects; requirement kinds otherwise.
+   * @returns the stored pending row.
+   */
+  prepareDiscussionSession(
+    subjectType: DiscussionSubjectType,
+    subjectId: string,
+    sessionId: string,
+    kind: string,
+    locale?: string,
+  ): DiscussionSessionReply {
+    try {
+      const row = this.workflow.prepareDiscussionSession(subjectType, subjectId, sessionId, kind)
+      return {
+        subjectType: row.subjectType,
+        subjectId: row.subjectId,
+        sessionId: row.sessionId,
+        kind: row.kind,
+        preparedAt: row.preparedAt,
+        linkedAt: row.linkedAt,
+        createdAt: row.createdAt,
+      }
+    } catch (error) {
+      throw localizedFailure(error, locale)
+    }
+  }
+
+  /**
    * Compute deletion impact without writing anything.
    * @param targets - records the user selected in the panel.
    * @returns per-record impact, cascaded detailed-design documents and skip reasons.
@@ -508,7 +575,7 @@ export class WorkbenchService extends TypertRemoteService {
       return {
         id: doc.id,
         title: doc.title,
-        ...readBody(this.workflow, requirement.workspaceId, doc.contentPath),
+        ...readBody(this.workflow, doc.contentPath),
       }
     } catch (error) {
       throw localizedFailure(error, locale)

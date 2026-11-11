@@ -27,7 +27,7 @@ function open(): TeamflowDatabase {
   directories.push(dataDir)
   const handle = openTeamflowDatabase({
     dataDir,
-    docsRoot: join(dataDir, 'workspace'),
+    docsDir: join(dataDir, 'workspace'),
     version: '0.1.0',
     log: { info: () => {}, warn: () => {}, error: () => {} },
   })
@@ -215,16 +215,7 @@ describe('document bodies over the remote contract', () => {
     assert.equal(requirementSnapshot?.body, '')
     assert.equal(requirementSnapshot?.bodyMissing, false)
 
-    const file = join(
-      dirname(handle.file),
-      'workspace',
-      '.xirang-ai',
-      'dsh-teamflow',
-      'requirements',
-      requirement.id,
-      'requirement.md',
-    )
-    rmSync(file)
+    rmSync(join(dirname(handle.file), 'workspace', requirement.contentPath))
 
     requirementSnapshot = service.snapshot().requirements.find((row) => row.id === requirement.id)
     assert.equal(requirementSnapshot?.body, '')
@@ -249,7 +240,7 @@ describe('document bodies over the remote contract', () => {
     assert.equal(present.body, '')
     assert.equal(present.bodyMissing, false)
 
-    rmSync(join(dirname(handle.file), 'workspace', '.xirang-ai', 'dsh-teamflow', 'requirements', requirement.id, 'docs', `${doc.id}.md`))
+    rmSync(join(dirname(handle.file), 'workspace', doc.contentPath))
     const missing = service.readDoc(doc.id)
     assert.equal(missing.bodyMissing, true)
   })

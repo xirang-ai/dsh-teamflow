@@ -79,14 +79,16 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 | Item | Location |
 | --- | --- |
 | Database | `$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite` |
-| Requirement / high-level design | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/requirement.md` |
-| Detailed design | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/docs/<doc>.md` |
-| Story | `<workspace>/.xirang-ai/dsh-teamflow/stories/<story>/story.md` |
-| Bug | `<workspace>/.xirang-ai/dsh-teamflow/bugs/<bug>/bug.md` |
+| Document root | `$DSH_HOME/xirang-ai/dsh-teamflow/docs` (override with `docsDir`) |
+| Requirement / high-level design | `<docs>/requirements/<req>/requirement.md` |
+| Detailed design | `<docs>/requirements/<req>/docs/<doc>.md` |
+| Story | `<docs>/stories/<story>/story.md` |
+| Bug | `<docs>/bugs/<bug>/bug.md` |
 
-- The workspace root `.gitignore` gets an `.xirang-ai/` entry automatically, so documents stay out of version control by default.
+- Documents live next to the database, both owned by the plugin: the user's project repository never gets a `.xirang-ai/` directory and its `.gitignore` is never rewritten. Keep the plugin directory when switching workspaces or machines.
 - The schema version lives in `PRAGMA user_version` and is currently `16`. Migrations run at startup; a database newer than the installed plugin refuses to start.
-- Back up `teamflow.sqlite` and `.xirang-ai/dsh-teamflow/` before upgrading or reinstalling.
+- Back up `teamflow.sqlite` and `docs/` (or the configured `docsDir`) before upgrading or reinstalling.
+- Older versions stored bodies under the workspace's `.xirang-ai/dsh-teamflow/`. Upgrading neither moves nor reads those documents; move them into the document root by hand if you still need them.
 
 ## Configuration
 
@@ -95,6 +97,7 @@ The bundle config layer provides these defaults:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `dataDir` | string | `''` | Data directory; empty means `$DSH_HOME/xirang-ai/dsh-teamflow`. Supports `~`. |
+| `docsDir` | string | `''` | Document root; empty means `<dataDir>/docs`. Accepts absolute paths, paths relative to the working directory, and `~/`. |
 | `busyTimeoutMs` | number | `5000` | SQLite `busy_timeout` for concurrent writers (0–60000). |
 
 To override them, edit the user config layer of the current profile, for example `$DSH_HOME/profiles/web/cordis.patch.yml`:
@@ -104,6 +107,7 @@ To override them, edit the user config layer of the current profile, for example
   name: "@xirang-ai/dsh-teamflow"
   config:
     dataDir: "~/teamflow-data"
+    docsDir: "~/teamflow-docs"
     busyTimeoutMs: 10000
 ```
 

@@ -103,27 +103,34 @@ function legacyV9(root: string): string {
 }
 
 describe('schema v10', () => {
-  it('merges designs into requirements and keeps every child readable', () => {
+  it('merges designs into requirements and moves stored paths onto the document root', () => {
     const root = temporaryRoot()
     const file = legacyV9(root)
 
-    const handle = openTeamflowDatabase({ dataDir: root, docsRoot: root, version: '0.1.0', log: silent })
+    const handle = openTeamflowDatabase({ dataDir: root, docsDir: root, version: '0.1.0', log: silent })
     try {
-      assert.deepEqual(handle.report.appliedMigrations, [10, 11, 12, 13, 14, 15, 16])
+      assert.deepEqual(handle.report.appliedMigrations, [10, 11, 12, 13, 14, 15, 16, 17])
 
       const requirement = handle.workflow.getRequirement('req_one')
       assert.equal(requirement?.status, 'draft')
       assert.equal(requirement?.completedAt, null)
-      assert.equal(requirement?.contentPath, `${DOC_ROOT}/requirements/req_one/requirement.md`)
+      assert.equal(requirement?.contentPath, 'requirements/req_one/requirement.md')
+      // Old documents are not migrated (accepted product trade-off): the
+      // rewritten path points below the document root, where nothing exists
+      // yet, and the legacy file is left untouched.
+      assert.equal(handle.workflow.readContent('requirements/req_one/requirement.md'), null)
       assert.equal(
-        readFileSync(join(root, requirement?.contentPath ?? ''), 'utf8'),
+        readFileSync(join(root, DOC_ROOT, 'requirements/req_one/requirement.md'), 'utf8'),
         '# 旧概设正文\n\n\n## 新概设\n\n# 新概设正文\n',
       )
 
       const docs = handle.workflow.listDesignDocs('req_one')
       assert.deepEqual(docs.map((doc) => doc.id), ['doc_one'])
-      assert.equal(docs[0]?.contentPath, `${DOC_ROOT}/requirements/req_one/docs/doc_one.md`)
-      assert.equal(readFileSync(join(root, docs[0]?.contentPath ?? ''), 'utf8'), '# 旧详设正文\n')
+      assert.equal(docs[0]?.contentPath, 'requirements/req_one/docs/doc_one.md')
+      assert.equal(
+        readFileSync(join(root, DOC_ROOT, 'requirements/req_one/docs/doc_one.md'), 'utf8'),
+        '# 旧详设正文\n',
+      )
 
       const story = handle.workflow.getStory('sty_one')
       assert.equal(story?.requirementId, 'req_one')

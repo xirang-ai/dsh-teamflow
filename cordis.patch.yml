@@ -28,6 +28,8 @@
       # Settings are the bundle's defaults; a profile patch can override them.
       config:
         dataDir: ''
+        # Empty keeps the document root at <dataDir>/docs, next to the database.
+        docsDir: ''
         busyTimeoutMs: 5000
 
     - id: preset-xirang-requirement

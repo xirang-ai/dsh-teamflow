@@ -21,6 +21,11 @@ export interface Config {
    * which is the only location this plugin owns.
    */
   dataDir: string
+  /**
+   * Document root override. Empty uses `<dataDir>/docs`, next to the database;
+   * relative paths resolve against the working directory and `~/` is expanded.
+   */
+  docsDir: string
   /** SQLite busy timeout in milliseconds; a second instance waits this long for the write lock. */
   busyTimeoutMs: number
 }
@@ -30,6 +35,11 @@ export const Config: Schema<Config> = Schema.object({
   dataDir: Schema.string()
     .default('')
     .description('Workbench data directory. Empty uses $DSH_HOME/xirang-ai/dsh-teamflow.'),
+  docsDir: Schema.string()
+    .default('')
+    .description(
+      'Document root for requirement, design, story and bug bodies. Empty uses <dataDir>/docs; relative paths and ~/ are supported.',
+    ),
   busyTimeoutMs: Schema.number()
     .min(0)
     .max(60_000)
@@ -54,11 +64,13 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   ctx.effect(() => {
-    // Document bodies live in the workspace directory, not the database, so the
-    // panel reads them by `content_path` through the live registry. Without the
-    // registry the store falls back to rows registered by the tool layer.
+    // Document bodies live below the plugin-owned document root, not the
+    // database and not the user's workspace; the panel reads them by
+    // `content_path` relative to that one root. The registry stays wired for
+    // workspace display only.
     const database: TeamflowDatabase = openTeamflowDatabase({
       dataDir: config.dataDir,
+      docsDir: config.docsDir,
       busyTimeoutMs: config.busyTimeoutMs,
       // Resolved lazily: the optional registry may register after this effect runs.
       workspaceRoot: (workspaceId) => ctx.get('workspaceRegistry')?.get(workspaceId)?.path,
@@ -96,7 +108,8 @@ export function apply(ctx: Context, config: Config): void {
 export type { TeamflowDatabase, StartupReport, Role } from './store/db.ts'
 export type { SchemaComment } from './store/schema.ts'
 export { WorkflowStore } from './store/workflow.ts'
-export { DOC_ROOT, docPath, ensureDocTree, resolveDocPath } from './store/docs.ts'
+export { docPath, ensureDocTree, resolveDocPath } from './store/docs.ts'
+export { DOCS_DIRNAME, defaultDocsDir, resolveDocsDir } from './store/paths.ts'
 export type { DocKind as DocFileKind } from './store/docs.ts'
 export type { WorkflowStoreOptions } from './store/workflow.ts'
 export { WorkflowError } from './store/model.ts'

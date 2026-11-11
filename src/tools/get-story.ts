@@ -93,7 +93,7 @@ export function readStory(workflow: WorkflowStore, rawId: string): StoryDetail {
           coversStory: linked.has(doc.id),
         }))
 
-  const body = workflow.readContent(story.workspaceId, story.contentPath)
+  const body = workflow.readContent(story.contentPath)
 
   return {
     id: story.id,

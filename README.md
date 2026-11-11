@@ -79,14 +79,16 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 | 项 | 位置 |
 | --- | --- |
 | 数据库 | `$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite` |
-| 需求 / 概设 | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/requirement.md` |
-| 详细设计 | `<workspace>/.xirang-ai/dsh-teamflow/requirements/<req>/docs/<doc>.md` |
-| 故事 | `<workspace>/.xirang-ai/dsh-teamflow/stories/<story>/story.md` |
-| 缺陷 | `<workspace>/.xirang-ai/dsh-teamflow/bugs/<bug>/bug.md` |
+| 文档根 | `$DSH_HOME/xirang-ai/dsh-teamflow/docs`（可用 `docsDir` 改到别处） |
+| 需求 / 概设 | `<docs>/requirements/<req>/requirement.md` |
+| 详细设计 | `<docs>/requirements/<req>/docs/<doc>.md` |
+| 故事 | `<docs>/stories/<story>/story.md` |
+| 缺陷 | `<docs>/bugs/<bug>/bug.md` |
 
-- 工作区根 `.gitignore` 会自动追加 `.xirang-ai/`，文档默认不进版本库。
+- 文档与数据库同根，都归插件目录所有：用户项目仓库里不会出现 `.xirang-ai/`，也不会改写工作区 `.gitignore`。换工作区或换机器时，保留插件目录里的数据库与文档即可。
 - 数据结构版本写在 `PRAGMA user_version`，当前为 `16`；启动时自动迁移，结构版本高于当前插件时拒绝启动。
-- 升级或重装前建议备份 `teamflow.sqlite` 与 `.xirang-ai/dsh-teamflow/`。
+- 升级或重装前备份 `teamflow.sqlite` 与 `docs/`（自定义了 `docsDir` 时备份该目录）。
+- 旧版本把正文放在工作区 `.xirang-ai/dsh-teamflow/` 下；升级后这些文档不会被自动搬迁，也不会再按旧路径读取，需要时请手动移入文档根。
 
 ## 配置
 
@@ -95,6 +97,7 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
 | 字段 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `dataDir` | string | `''` | 数据目录；留空表示 `$DSH_HOME/xirang-ai/dsh-teamflow`，支持 `~` |
+| `docsDir` | string | `''` | 文档根；留空表示 `<dataDir>/docs`，支持绝对路径、相对路径与 `~/` |
 | `busyTimeoutMs` | number | `5000` | SQLite `busy_timeout`，多会话并发写时的等待上限（0–60000） |
 
 要覆盖默认值，编辑当前 profile 的用户配置层，例如 `$DSH_HOME/profiles/web/cordis.patch.yml`：
@@ -104,6 +107,7 @@ dsh plugin --profile web remove @xirang-ai/dsh-teamflow
   name: "@xirang-ai/dsh-teamflow"
   config:
     dataDir: "~/teamflow-data"
+    docsDir: "~/teamflow-docs"
     busyTimeoutMs: 10000
 ```
 

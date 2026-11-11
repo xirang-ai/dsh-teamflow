@@ -24,7 +24,12 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 
-import { DOC_ROOT } from './docs.ts'
+/**
+ * Document root of the released v10 migration. Migrations are a historical
+ * contract: v10 moved bodies into the workspace, and that path must stay
+ * exactly as published even though current documents live elsewhere.
+ */
+const LEGACY_DOC_ROOT = '.xirang-ai/dsh-teamflow'
 
 /** One forward schema migration. */
 export interface Migration {
@@ -636,7 +641,7 @@ function relocateV10Bodies(
       continue
     }
 
-    const target = `${DOC_ROOT}/requirements/${requirementId}/requirement.md`
+    const target = `${LEGACY_DOC_ROOT}/requirements/${requirementId}/requirement.md`
     try {
       let body = readFileSync(absolute(root, primary.contentPath), 'utf8')
       for (const extra of group.slice(1)) {
@@ -659,7 +664,7 @@ function relocateV10Bodies(
     if (requirementId === undefined) continue
     const root = roots.get(requirementId)
     if (root === undefined || doc.contentPath === '') continue
-    const target = `${DOC_ROOT}/requirements/${requirementId}/docs/${doc.id}.md`
+    const target = `${LEGACY_DOC_ROOT}/requirements/${requirementId}/docs/${doc.id}.md`
     try {
       if (!existsSync(absolute(root, doc.contentPath))) continue
       const targetFile = absolute(root, target)
@@ -884,6 +889,55 @@ ALTER TABLE stories ADD COLUMN create_session_id TEXT;  -- 创建该故事的 DS
 ALTER TABLE bugs ADD COLUMN create_session_id TEXT;  -- 创建该缺陷的 DSH 会话 id；历史数据为 NULL
 `
 
+/**
+ * v17：讨论会话登记泛化为需求 / 故事 / 缺陷三类对象。
+ *
+ * 需求专属的 `requirement_sessions` 只能挂需求，而故事与缺陷也要能从详情页
+ * 发起讨论并回写正文。这里换成一张按 `(subject_type, subject_id, session_id)`
+ * 唯一的通用表：需求侧原有的 kind（create/design/detail/split）原样迁入，
+ * 故事与缺陷用 `discuss`。时间列沿用旧表的 TEXT ISO-8601，迁移不换算。
+ * 对象删除不再级联：列表按 `(subject_type, subject_id)` 查询，孤儿行不进任何列表。
+ */
+const SCHEMA_V17 = `
+CREATE TABLE discussion_sessions (                 -- 讨论对象与宿主会话的登记关系表
+  subject_type TEXT NOT NULL,                      -- 讨论对象类型：requirement / story / bug
+  subject_id   TEXT NOT NULL,                      -- 讨论对象 id（需求 / 故事 / 缺陷的业务 id）
+  session_id   TEXT NOT NULL,                      -- 宿主会话 id
+  kind         TEXT NOT NULL DEFAULT 'discuss',    -- 讨论类型：discuss 为通用讨论；需求侧沿用既有取值
+  prepared_at  TEXT,                               -- 两段式登记第一段：客户端写入的「待开始」时刻（ISO-8601 UTC）；创建会话行为 NULL
+  linked_at    TEXT,                               -- 两段式登记第二段：Agent 确认后的「已登记」时刻（ISO-8601 UTC）；NULL = 待开始
+  created_at   TEXT NOT NULL,                      -- 行首次创建时刻（ISO-8601 UTC）
+  PRIMARY KEY (subject_type, subject_id, session_id)
+);
+
+CREATE INDEX idx_discussion_sessions_subject
+  ON discussion_sessions (subject_type, subject_id, linked_at DESC);
+`
+
+/** Copy every legacy requirement row into the generic table and drop it. */
+function migrateRequirementSessions(db: DatabaseSync): void {
+  db.exec(SCHEMA_V17)
+  db.exec(`
+INSERT INTO discussion_sessions
+  (subject_type, subject_id, kind, session_id, prepared_at, linked_at, created_at)
+SELECT 'requirement', requirement_id, kind, session_id, prepared_at, linked_at, created_at
+FROM requirement_sessions;
+`)
+  const before = db.prepare('SELECT COUNT(*) AS count FROM requirement_sessions').get()
+  const after = db
+    .prepare("SELECT COUNT(*) AS count FROM discussion_sessions WHERE subject_type = 'requirement'")
+    .get()
+  const copied = Number(after?.['count'] ?? 0)
+  const expected = Number(before?.['count'] ?? 0)
+  if (copied !== expected) {
+    throw new Error(
+      `teamflow: schema migration 17 copied ${copied} requirement session row(s) but the legacy table held ${expected}; rolling back`,
+    )
+  }
+  db.exec('DROP TABLE requirement_sessions')
+}
+
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -1019,6 +1073,13 @@ export const MIGRATIONS: readonly Migration[] = [
       db.exec(SCHEMA_V16)
     },
   },
+  {
+    version: 17,
+    description: 'generalize discussion sessions to requirements, stories and bugs',
+    up: (db) => {
+      migrateRequirementSessions(db)
+    },
+  },
 ]
 
 /** Schema version this build expects; the last migration's version. */
@@ -1066,26 +1127,27 @@ export const SCHEMA_COMMENTS: readonly SchemaComment[] = [
   { table: 'requirements', column: 'workspace_id', description: '所属 DSH 工作区 id（ctx.workspaces 的 WorkspaceView.workspaceId）；空串表示 v4 迁移之前写入的历史数据。' },
   { table: 'requirements', column: 'title', description: '需求标题。' },
   { table: 'requirements', column: 'summary', description: '澄清并总结后的一句话结论，供详细设计和故事引用。' },
-  { table: 'requirements', column: 'content_path', description: '正文（需求 + 概要设计）相对路径（工作区内，如 .xirang-ai/dsh-teamflow/requirements/<id>/requirement.md）。' },
+  { table: 'requirements', column: 'content_path', description: '正文（需求 + 概要设计）相对路径（文档根内，如 requirements/<id>/requirement.md）。' },
   { table: 'requirements', column: 'status', description: '状态：draft=进行中（仍在收集或修改），completed=用户确认完成，archived=已归档；完成不会自动发生。' },
   { table: 'requirements', column: 'created_at', description: '创建时间（ISO-8601 UTC）。' },
   { table: 'requirements', column: 'updated_at', description: '最后更新时间（ISO-8601 UTC）。' },
   { table: 'requirements', column: 'completed_at', description: '用户确认完成需求的时间（ISO-8601 UTC），未完成为 NULL。' },
 
-  { table: 'requirement_sessions', column: '', description: '需求与会话：创建需求（create）、概要设计讨论（design）、详细设计讨论（detail）和故事拆分讨论（split）都记在这里。' },
-  { table: 'requirement_sessions', column: 'requirement_id', description: '所属需求；删除需求时级联清理关联。' },
-  { table: 'requirement_sessions', column: 'session_id', description: 'DSH 会话 id，唯一；一个会话只属于一个需求。' },
-  { table: 'requirement_sessions', column: 'kind', description: '会话类型：create=创建需求，design=讨论概要设计，detail=讨论详细设计，split=讨论故事拆分。' },
-  { table: 'requirement_sessions', column: 'prepared_at', description: '浏览器创建讨论会话后写入待登记的时间（ISO-8601 UTC）；创建需求的会话为 NULL。' },
-  { table: 'requirement_sessions', column: 'linked_at', description: 'Agent 调用登记工具确认的时间（ISO-8601 UTC）；NULL 表示待开始，不进入历史列表。' },
-  { table: 'requirement_sessions', column: 'created_at', description: '首次绑定时间（ISO-8601 UTC）。' },
+  { table: 'discussion_sessions', column: '', description: '讨论对象与宿主会话的登记关系：需求、故事、缺陷的讨论会话都记在这里，两段式登记（浏览器准备、Agent 确认）。' },
+  { table: 'discussion_sessions', column: 'subject_type', description: '讨论对象类型：requirement=需求，story=故事，bug=缺陷；与 subject_id 一起标识对象。' },
+  { table: 'discussion_sessions', column: 'subject_id', description: '讨论对象 id（需求 / 故事 / 缺陷的业务 id）；对象删除时不级联清理。' },
+  { table: 'discussion_sessions', column: 'session_id', description: 'DSH 会话 id；同一对象与同一会话只有一行。' },
+  { table: 'discussion_sessions', column: 'kind', description: '讨论类型：create=创建需求，design=讨论概要设计，detail=讨论详细设计，split=讨论故事拆分，discuss=故事/缺陷的通用讨论。' },
+  { table: 'discussion_sessions', column: 'prepared_at', description: '浏览器创建讨论会话后写入待登记的时间（ISO-8601 UTC）；创建需求的会话为 NULL。' },
+  { table: 'discussion_sessions', column: 'linked_at', description: 'Agent 调用登记工具确认的时间（ISO-8601 UTC）；NULL 表示待开始，不进入历史列表。' },
+  { table: 'discussion_sessions', column: 'created_at', description: '首次绑定时间（ISO-8601 UTC）。' },
 
   { table: 'stories', column: '', description: '故事：可独立开发与交付的单元；父级是需求，也可以独立存在。' },
   { table: 'stories', column: 'id', description: 'nanoid 业务主键（sty_ 前缀）。' },
   { table: 'stories', column: 'workspace_id', description: '所属 DSH 工作区 id：有父级时继承并校验一致，独立故事创建时指定。' },
   { table: 'stories', column: 'requirement_id', description: '所属需求；为空表示用户直接提出的独立故事。' },
   { table: 'stories', column: 'title', description: '故事标题。' },
-  { table: 'stories', column: 'content_path', description: '故事正文相对路径：说明与验收标准写在同一份 story.md 里。' },
+  { table: 'stories', column: 'content_path', description: '故事正文相对路径（文档根内，如 stories/<id>/story.md）：说明与验收标准写在同一份 story.md 里。' },
   { table: 'stories', column: 'status', description: '状态：ready=待开发，developing=开发中，self_testing=自测中，done=执行完毕（未完成），completed=用户确认完成，cancelled=已取消。' },
   { table: 'stories', column: 'size', description: '拆分时的工作量档位：xs/s/m/l/xl。' },
   { table: 'stories', column: 'sort_order', description: '同一需求下的展示顺序，升序；新建取当前最大值 + 1，运行与状态流转不改它。' },
@@ -1096,7 +1158,7 @@ export const SCHEMA_COMMENTS: readonly SchemaComment[] = [
   { table: 'design_docs', column: 'requirement_id', description: '所属需求；删除需求时一并删除其文档。' },
   { table: 'design_docs', column: 'kind', description: '文档主题：flow=流程，data=数据，interface=接口，page=页面，rule=规则。' },
   { table: 'design_docs', column: 'title', description: '文档标题，工作台列表中一行显示。' },
-  { table: 'design_docs', column: 'content_path', description: '详设正文相对路径；正文很长，只落盘不进库。' },
+  { table: 'design_docs', column: 'content_path', description: '详设正文相对路径（文档根内，如 requirements/<req>/docs/<doc>.md）；正文很长，只落盘不进库。' },
   { table: 'design_docs', column: 'sort_order', description: '同一需求下的展示顺序，升序；新建取当前最大值 + 1，页面只按它渲染。' },
   { table: 'design_docs', column: 'created_at', description: '创建时间（ISO-8601 UTC）。' },
   { table: 'design_docs', column: 'updated_at', description: '最后更新时间（ISO-8601 UTC）。' },
@@ -1114,7 +1176,7 @@ export const SCHEMA_COMMENTS: readonly SchemaComment[] = [
   { table: 'bugs', column: 'id', description: 'nanoid 业务主键（bug_ 前缀）。' },
   { table: 'bugs', column: 'workspace_id', description: '所属 DSH 工作区 id：bug 独立存在，创建时必须显式给出。' },
   { table: 'bugs', column: 'title', description: 'bug 标题。' },
-  { table: 'bugs', column: 'content_path', description: '缺陷正文相对路径：描述、复现、期望、实际、环境都在这份 bug.md 里。' },
+  { table: 'bugs', column: 'content_path', description: '缺陷正文相对路径（文档根内，如 bugs/<id>/bug.md）：描述、复现、期望、实际、环境都在这份 bug.md 里。' },
   { table: 'bugs', column: 'severity', description: '严重程度：blocker/critical/major/minor/trivial。' },
   { table: 'bugs', column: 'status', description: '状态：reported=待修复，fixing=修复中，fixed=执行完毕（未完成），completed=用户确认完成，wontfix=不修复。' },
   { table: 'bugs', column: 'resolution', description: '修复结论、不修复原因或关闭说明。' },

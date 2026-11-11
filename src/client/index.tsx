@@ -17,6 +17,7 @@ import {
   type BugRunReply,
   type BugStatusReply,
   type CancelRunReply,
+  type DiscussionSessionReply,
   type DocBody,
   type RequirementSessionReply,
   type RemoteResult,
@@ -27,7 +28,7 @@ import {
   type WorkbenchRemote,
   type WorkbenchSnapshot,
 } from '../remote/contract.ts'
-import type { DeletePreview, DeleteReport, DeleteTarget } from '../store/model.ts'
+import type { DeletePreview, DeleteReport, DeleteTarget, DiscussionSubjectType } from '../store/model.ts'
 import type {
   AgentPresetRemote,
   ClientContext,
@@ -459,6 +460,15 @@ function createChannel(ctx: ClientContext): WorkbenchData {
     ) =>
       callRemote<RequirementSessionReply>(
         (await ready.promise).prepareRequirementSession(requirementId, sessionId, kind, locale()),
+      ),
+    prepareDiscussionSession: async (
+      subjectType: DiscussionSubjectType,
+      subjectId: string,
+      sessionId: string,
+      kind: string,
+    ) =>
+      callRemote<DiscussionSessionReply>(
+        (await ready.promise).prepareDiscussionSession(subjectType, subjectId, sessionId, kind, locale()),
       ),
     sessionPermissionTier: async (sessionId: string) =>
       callRemote<SessionTierReply>((await ready.promise).sessionPermissionTier(sessionId, locale())),

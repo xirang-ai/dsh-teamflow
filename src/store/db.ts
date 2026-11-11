@@ -16,7 +16,9 @@ import {
   DATABASE_FILENAME,
   databaseFile,
   ensureDataDir,
+  ensureDocsDir,
   resolveDataDir,
+  resolveDocsDir,
   toDisplayPath,
 } from './paths.ts'
 import {
@@ -69,6 +71,10 @@ export interface StartupReport {
   readonly file: string
   /** Database file rendered for logs (`$DSH_HOME/...`). */
   readonly displayFile: string
+  /** Absolute document root that holds `requirements/`, `stories/` and `bugs/`. */
+  readonly docsDir: string
+  /** Document root rendered for logs (`$DSH_HOME/...`). */
+  readonly displayDocsDir: string
   /** Version stored before this start, `null` on the first start. */
   readonly fromVersion: string | null
   /** Version now running. */
@@ -118,10 +124,11 @@ export interface OpenDatabaseOptions {
   /** `Config.dataDir` override; empty uses the plugin home below `$DSH_HOME`. */
   readonly dataDir?: string
   /**
-   * Where documents are written when a workspace directory is unknown yet.
-   * Production passes the workspace path via `registerWorkspace` instead.
+   * `Config.docsDir` override for the document root; empty uses `<dataDir>/docs`.
+   * Relative paths and `~/` resolve like {@link resolveDataDir}; an invalid value
+   * throws instead of falling back to the default.
    */
-  readonly docsRoot?: string
+  readonly docsDir?: string
   /** Resolver consulted before the registry, for the Host's live workspace list. */
   readonly workspaceRoot?: (workspaceId: string) => string | undefined
   /** SQLite busy timeout in milliseconds. */
@@ -130,6 +137,33 @@ export interface OpenDatabaseOptions {
   readonly version?: string
   /** Where startup progress goes. */
   readonly log?: FlowLogger
+}
+
+/** Prefix of legacy content paths, which were relative to a workspace root. */
+const LEGACY_DOC_PREFIX = '.xirang-ai/dsh-teamflow/'
+
+/**
+ * Rewrite legacy workspace-relative `content_path` values onto the document
+ * root. Idempotent: rows already on the new basis do not match the prefix, so
+ * a restart after a partial failure simply finishes the job.
+ *
+ * This is a data-basis normalization, not a schema migration: the table layout
+ * and `user_version` stay untouched.
+ *
+ * @returns how many rows were rewritten.
+ */
+function normalizeContentPaths(db: DatabaseSync): number {
+  const tables = ['requirements', 'design_docs', 'stories', 'bugs'] as const
+  return withTransaction(db, () => {
+    let changed = 0
+    for (const table of tables) {
+      const result = db
+        .prepare(`UPDATE ${table} SET content_path = substr(content_path, ?) WHERE content_path LIKE ?`)
+        .run(LEGACY_DOC_PREFIX.length + 1, `${LEGACY_DOC_PREFIX}%`)
+      changed += Number(result.changes)
+    }
+    return changed
+  })
 }
 
 interface Reconciliation {
@@ -306,6 +340,7 @@ export function openTeamflowDatabase(options: OpenDatabaseOptions = {}): Teamflo
   const log = options.log ?? SILENT_LOGGER
   const version = options.version ?? readPluginVersion()
   const dataDir = resolveDataDir(options.dataDir)
+  const docsDir = ensureDocsDir(resolveDocsDir(options.docsDir, dataDir))
   const file = databaseFile(dataDir)
 
   try {
@@ -326,11 +361,19 @@ export function openTeamflowDatabase(options: OpenDatabaseOptions = {}): Teamflo
     const appliedMigrations = migrate(db, log)
     syncSchemaComments(db)
     seedBuiltinRoles(db)
+    const normalizedPaths = normalizeContentPaths(db)
+    if (normalizedPaths > 0) {
+      log.info(
+        `normalized ${normalizedPaths} document path(s) onto the document root ${toDisplayPath(docsDir)}`,
+      )
+    }
     const reconciliation = reconcileVersion(db, version, log)
 
     const report: StartupReport = {
       file,
       displayFile: toDisplayPath(file),
+      docsDir,
+      displayDocsDir: toDisplayPath(docsDir),
       fromVersion: reconciliation.fromVersion,
       toVersion: version,
       outcome: reconciliation.outcome,
@@ -362,7 +405,7 @@ export function openTeamflowDatabase(options: OpenDatabaseOptions = {}): Teamflo
       db,
       report,
       workflow: new WorkflowStore(db, {
-        docsRoot: options.docsRoot,
+        docsRoot: docsDir,
         workspaceRoot: options.workspaceRoot,
         warn: (message) => log.warn(message),
       }),

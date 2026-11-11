@@ -95,7 +95,7 @@ describe('schema v15', () => {
 
     const handle = openTeamflowDatabase({ dataDir: root, version: '0.1.0', log: silent })
     try {
-      assert.deepEqual(handle.report.appliedMigrations, [15, 16])
+      assert.deepEqual(handle.report.appliedMigrations, [15, 16, 17])
       assert.equal(Number(handle.db.prepare('PRAGMA user_version').get()?.['user_version']), TARGET_SCHEMA_VERSION)
       assert.deepEqual(handle.db.prepare('PRAGMA foreign_key_check').all(), [])
 

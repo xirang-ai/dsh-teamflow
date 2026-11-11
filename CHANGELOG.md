@@ -4,6 +4,24 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。条目按 `Added` / `Changed` / `Fixed` 分类，只写用户或开发者可观察、能追到代码或命令的变化；同一模块的多处小修合并为一条，并写清覆盖了哪几处。
 
+## [Unreleased]
+
+需求、详细设计、故事与缺陷正文从工作区 `.xirang-ai/dsh-teamflow/` 移到插件目录的 `docs/`，并支持用 `docsDir` 自定义文档根。
+
+### 兼容性
+
+- 旧文档不会被自动搬迁，也不再按旧路径读取：升级后这些记录显示「文档不存在」，需要时请手动把工作区里的旧文件移入新的文档根。工作区不再生成 `.xirang-ai/`，`.gitignore` 也不会再被追加。
+- 库里的 `content_path` 在启动时一次性归一为「文档根相对路径」；数据库表结构与 schema 版本不变。
+
+### Added
+
+- 配置项 `docsDir`：文档根，留空表示 `<dataDir>/docs`，支持绝对路径、相对路径与 `~/`；非法值在插件加载时直接失败并指出字段与期望值。
+
+### Changed
+
+- 文档位置：需求 / 概设 `<docs>/requirements/<req>/requirement.md`，详细设计 `<docs>/requirements/<req>/docs/<doc>.md`，故事 `<docs>/stories/<story>/story.md`，缺陷 `<docs>/bugs/<bug>/bug.md`；读写共用同一个文档根。
+- 备份与迁移：备份对象改为 `teamflow.sqlite` 与 `docs/`（或自定义的 `docsDir`）；双语 README 的目录表、备份说明与配置章节已同步。
+
 ## [0.1.1] - 2026-11-10
 
 创建页可以把文件直接拖进附件卡片；输入框「创建类型」换成与宿主一致的菜单控件。

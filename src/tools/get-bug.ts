@@ -43,7 +43,7 @@ export function readBug(workflow: WorkflowStore, rawId: string): BugDetail {
   if (id.length === 0) throw new Error('teamflow: 缺陷 id 不能为空。')
   const bug = workflow.getBug(id)
   if (bug === null) throw new Error(`teamflow: 缺陷 ${id} 不存在，无法读取正文。`)
-  const body = workflow.readContent(bug.workspaceId, bug.contentPath)
+  const body = workflow.readContent(bug.contentPath)
   return {
     id: bug.id,
     title: bug.title,

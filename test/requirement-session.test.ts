@@ -35,7 +35,7 @@ function open(): TeamflowDatabase {
   directories.push(dataDir)
   const handle = openTeamflowDatabase({
     dataDir,
-    docsRoot: join(dataDir, 'workspace'),
+    docsDir: join(dataDir, 'workspace'),
     version: '0.1.0',
     log: { info: () => {}, warn: () => {}, error: () => {} },
   })
