@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 目标版本号 | **0.1.1**（用户已确认） |
+| 目标版本号 | **0.1.2**（用户已确认） |
 | 发布分支 / commit | 发布时填写 |
 | 发布日期 | 发布时填写 |
 | 发布人 | 发布时填写 |
@@ -17,7 +17,7 @@
 | dist-tag | `latest` |
 
 - [ ] 版本号已由开发者明确确认，且 `package.json`、`lib/client.js` banner、README / CHANGELOG 中的版本声明一致。
-- [ ] 发布后打 `v<version>` tag，并在 GitHub Release 写清配置、`engines.dsh` 与数据结构版本（当前 schema `16`）。
+- [ ] 发布后打 `v<version>` tag，并在 GitHub Release 写清配置、`engines.dsh` 与数据结构版本（当前 schema `17`）。
 
 ## 1. 与 DSH 官方 tag 的兼容性核对
 
@@ -78,7 +78,7 @@ npm pack --dry-run --json
 
 - [ ] 仓库内 `pnpm peers check` 无 `missing peer` / `unmet peer`。
 - [ ] 干净 profile 里 `pnpm peers check` 对 `@deepseek-ai/dsh-*` 宿主包报 `missing peer` 属预期：这些实例由正在运行的 DSH 提供，不要为了消除警告把它们改成 optional；以真实启动成功为准。
-- [ ] `npm pack --dry-run` 的 93 个文件中没有 `src/`、`test/`、`docs/`、`design/`、`.tmp/`、`.devhome/`、`.xirang-ai/`、`*.sqlite*`。
+- [ ] `npm pack --dry-run` 的 95 个文件中没有 `src/`、`test/`、`docs/`、`design/`、`.tmp/`、`.devhome/`、`.xirang-ai/`、`*.sqlite*`。
 - [ ] `prepublishOnly` 已配置为 `pnpm run verify`，干净 checkout 发布时会先构建。
 
 ## 3. 干净 profile 安装与真实启动
@@ -108,7 +108,7 @@ sqlite3 "$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite" \
   'PRAGMA user_version; SELECT key, value FROM meta; SELECT key, name FROM roles;'
 ```
 
-- [ ] `PRAGMA user_version = 16`。
+- [ ] `PRAGMA user_version = 17`。
 - [ ] `meta.plugin_version` 等于 `package.json` 版本。
 - [ ] `roles` 含 `product` / `dev`。
 - [ ] 至少真实调用一次 `teamflow_*` 工具（含一次错误分支）。
@@ -125,7 +125,7 @@ sqlite3 "$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite" \
 - [ ] 开发端口统一为 `3091`（与本文件、AGENTS.md §5.1 一致）。
 - [ ] README 中的链接均可访问；仓库根的 `docs/` 仅作为提示词一致性报告、快照、Demo 走查结论与历次发版检查留痕保留，不进入 npm 包。
 - [ ] 配置说明指向 **profile 配置层** 的 `id: teamflow` 覆盖，而不是让用户改 `node_modules` 里的包内文件。
-- [ ] 版本号、schema 版本、工具数量（当前 19 个）、预设数量（当前 5 个）与实际一致。
+- [ ] 版本号、schema 版本、工具数量（当前 20 个）、预设数量（当前 5 个）与实际一致。
 - [ ] 本文件已按本次发版更新；AGENTS.md 的阅读路径与文档索引没有死链。
 
 ## 5. 代码、敏感信息与数据卫生
@@ -157,7 +157,7 @@ find . -maxdepth 2 \( -name '*.sqlite*' -o -name '.tmp' -o -name '.devhome' -o -
 - [ ] Agent 人设 / prompt 中的语言与目标用户一致；新增语言时同时补字典、`normalizeLocale` 与测试。
 - [ ] `pnpm test` 中的 locale 测试通过。
 
-当前核对（2026-11-11）：en / zh 各 334 个键，集合一致、无空值；en 无中文残留；`src/remote` 的错误均走 `translate()`；客户端硬编码中文只出现在注释与验收标准正则中。
+当前核对（2026-11-11）：en / zh 各 336 个键，集合一致、无空值；en 无中文残留；`src/remote` 的错误均走 `translate()`；客户端硬编码中文只出现在注释与验收标准正则中。
 
 ## 7. Git、npm 与发布
 

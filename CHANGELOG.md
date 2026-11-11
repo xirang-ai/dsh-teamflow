@@ -4,18 +4,24 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。条目按 `Added` / `Changed` / `Fixed` 分类，只写用户或开发者可观察、能追到代码或命令的变化；同一模块的多处小修合并为一条，并写清覆盖了哪几处。
 
-## [Unreleased]
+## [0.1.2] - 2026-11-11
 
-需求、详细设计、故事与缺陷正文从工作区 `.xirang-ai/dsh-teamflow/` 移到插件目录的 `docs/`，并支持用 `docsDir` 自定义文档根。
+需求、详细设计、故事与缺陷正文从工作区 `.xirang-ai/dsh-teamflow/` 移到插件目录的 `docs/`，并支持用 `docsDir` 自定义文档根；故事与缺陷新增可多次续接的讨论会话。
 
 ### 兼容性
 
+- DSH `>=0.2.2-rc.1 <0.3.0`（当前 `0.2.2-rc.1`），Node `>=24.9.0`；数据结构 schema 从 `16` 升到 `17`，启动时自动迁移，旧库直接沿用。
+- 迁移 17 把需求专用会话表 `requirement_sessions` 的数据原样复制到通用表 `discussion_sessions`（按对象类型、对象 id 与会话 id 唯一），复制校验通过后删除旧表；任一步失败整体回滚，旧数据不受影响。
 - 旧文档不会被自动搬迁，也不再按旧路径读取：升级后这些记录显示「文档不存在」，需要时请手动把工作区里的旧文件移入新的文档根。工作区不再生成 `.xirang-ai/`，`.gitignore` 也不会再被追加。
-- 库里的 `content_path` 在启动时一次性归一为「文档根相对路径」；数据库表结构与 schema 版本不变。
+- 库里的 `content_path` 在启动时归一为「文档根相对路径」，幂等执行；这是数据基准修正，不是 schema 迁移，`user_version` 只由迁移推进。
+- 已知限制：`dsh --profile <p> --dump-config-schema` 在 DSH 0.2.2-rc.1 上会对 preset 的嵌套 `plugins` 报 `unrecognized Loader tree carrier`（全新 web 模板同样如此）；发版验证以 `--dump-config`、真实启动与 UI 为准。
 
 ### Added
 
 - 配置项 `docsDir`：文档根，留空表示 `<dataDir>/docs`，支持绝对路径、相对路径与 `~/`；非法值在插件加载时直接失败并指出字段与期望值。
+- 讨论会话：故事详情与缺陷详情新增「在新会话中讨论」，同一对象可以累积多次讨论；详情页列出已确认的会话并可回到原会话继续。
+- 工具 `teamflow_link_session`：需求 / 故事 / 缺陷共用，幂等登记当前会话；`teamflow_link_requirement_session` 保留为兼容入口。
+- 工作台接口 `prepareDiscussionSession`：与 `prepareRequirementSession` 相同的两段式登记，只写「待开始」，由 Agent 确认后才写入登记时间。
 
 ### Changed
 
