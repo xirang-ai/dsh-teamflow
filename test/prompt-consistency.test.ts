@@ -384,7 +384,7 @@ describe('pre-rewrite snapshot set (5/5)', () => {
       const snapshot = readFileSync(
         new URL(`../docs/agent-prompt-snapshots/${agent.preset}.md`, import.meta.url),
         'utf8',
-      )
+      ).replace(/\r\n/g, '\n')
       assert.ok(snapshot.includes('工作方式：'), `${agent.preset} keeps the old persona`)
       assert.ok(snapshot.includes('你是息壤工作台里的'), `${agent.preset} keeps the old role line`)
       const blocks = [...snapshot.matchAll(/```text\n([\s\S]*?)```/g)].map((match) => match[1])

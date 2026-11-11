@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 目标版本号 | **0.1.0**（用户已确认保持当前 `package.json` 版本） |
+| 目标版本号 | **0.1.1**（用户已确认） |
 | 发布分支 / commit | 发布时填写 |
 | 发布日期 | 发布时填写 |
 | 发布人 | 发布时填写 |
@@ -30,7 +30,7 @@ git ls-remote --tags --refs https://github.com/deepseek-ai/deepseek-harness.git 
   | sort -V
 ```
 
-2026-11-10 核对结果：
+2026-11-11 核对结果：
 
 | 项 | 结果 |
 | --- | --- |
@@ -123,7 +123,7 @@ sqlite3 "$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite" \
 - [ ] 安装命令使用 `dsh plugin --profile <profile> add ...`，并说明安装后要重启 Host，不能只刷新浏览器。
 - [ ] Node 版本写 `>=24.9.0`，与 `engines.node` 一致。
 - [ ] 开发端口统一为 `3091`（与本文件、AGENTS.md §5.1 一致）。
-- [ ] README 中的链接均可访问；仓库根的 `docs/` 仅作为提示词一致性报告与快照的测试证据保留，不进入 npm 包。
+- [ ] README 中的链接均可访问；仓库根的 `docs/` 仅作为提示词一致性报告、快照、Demo 走查结论与历次发版检查留痕保留，不进入 npm 包。
 - [ ] 配置说明指向 **profile 配置层** 的 `id: teamflow` 覆盖，而不是让用户改 `node_modules` 里的包内文件。
 - [ ] 版本号、schema 版本、工具数量（当前 19 个）、预设数量（当前 5 个）与实际一致。
 - [ ] 本文件已按本次发版更新；AGENTS.md 的阅读路径与文档索引没有死链。
@@ -134,7 +134,7 @@ sqlite3 "$DSH_HOME/xirang-ai/dsh-teamflow/teamflow.sqlite" \
 - [ ] 没有未完成功能、`TODO` / `FIXME` / `HACK` / `XXX`、注释掉的半成品代码、调试日志。
 - [ ] 没有 smoke / mock / demo / fixture / seed 数据进入 `src/` 或 npm 包（测试临时目录必须在 `tmpdir()` 下创建并清理）。
 - [ ] 本地 scratch 已删除：`.tmp/`、`.devhome/`、`.xirang-ai/`、`*.sqlite*`、`*.log`、临时截图 / 原型。
-- [ ] `design/` 已按维护决定删除；`docs/` 只保留提示词一致性报告与快照，测试依赖它，不得删除，且不进入 npm 包。
+- [ ] `design/` 已按维护决定删除；`docs/` 只保留提示词一致性报告与快照、Demo 走查结论、发版检查留痕，测试依赖其中的快照，不得删除，且不进入 npm 包。
 - [ ] `lib/` 未提交（由构建生成），但发布包中必须包含最新构建。
 - [ ] `git status` 干净；`git ls-files` 包含 `package.json`、`cordis.patch.yml`、`src/`、`test/`、`locale/`、`scripts/`，不再只有 README / LICENSE。
 
@@ -157,7 +157,7 @@ find . -maxdepth 2 \( -name '*.sqlite*' -o -name '.tmp' -o -name '.devhome' -o -
 - [ ] Agent 人设 / prompt 中的语言与目标用户一致；新增语言时同时补字典、`normalizeLocale` 与测试。
 - [ ] `pnpm test` 中的 locale 测试通过。
 
-当前核对（2026-11-10）：en / zh 各 332 个键，集合一致、无空值；en 无中文残留；`src/remote` 的错误均走 `translate()`；客户端硬编码中文只出现在注释与验收标准正则中。
+当前核对（2026-11-11）：en / zh 各 334 个键，集合一致、无空值；en 无中文残留；`src/remote` 的错误均走 `translate()`；客户端硬编码中文只出现在注释与验收标准正则中。
 
 ## 7. Git、npm 与发布
 

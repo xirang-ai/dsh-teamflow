@@ -1101,8 +1101,82 @@ body[data-ds-dark-theme] .tf-btn[data-tone='primary'] { color: #0f1115; }
  * Attachment block. The picker is the Host's own file input, so it keeps the
  * Host rules for what can be selected; it is only hidden because the visible
  * control is the card's button and native inputs cannot be styled consistently.
+ * The whole card body is one picker: a large plus, the action, and what a drop
+ * will do. It stays a real <button>, so the drop target always keeps a
+ * keyboard and single-pointer equivalent for the drag gesture.
  */
-.tf-attachment-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.tf-attachment-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 150px;
+  margin-top: 10px;
+  padding: 20px 16px;
+  border: 1px dashed var(--dsw-alias-border-l3, currentColor);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-l2, transparent);
+  color: var(--dsw-alias-label-secondary, inherit);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .12s ease, background-color .12s ease;
+}
+.tf-attachment-pick:hover:not(:disabled) {
+  border-color: var(--dsw-alias-state-business-primary, #4176e6);
+  background: var(--dsw-alias-interactive-bg-hover, transparent);
+}
+.tf-attachment-pick:focus-visible {
+  outline: 2px solid var(--dsw-alias-link, #4176e6);
+  outline-offset: 2px;
+}
+.tf-attachment-pick:disabled { opacity: .5; cursor: default; }
+.tf-attachment-plus {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, .04));
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+}
+.tf-attachment-pick-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.tf-attachment-pick-sub {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
+.tf-attachment-limits {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--dsw-alias-label-caption, inherit);
+}
+/*
+ * The attachment card doubles as the drop target, so a file dropped anywhere
+ * the user reads as "the attachment area" lands on the picker's own intake path.
+ * Only the picker itself lights up while a file drag is inside the card, and its
+ * subtitle says what releasing will do.
+ */
+.tf-attachment-dropzone[data-drag='active'] .tf-attachment-pick {
+  border-style: solid;
+  border-color: var(--dsw-alias-state-business-primary, #4176e6);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 7%, transparent);
+}
+.tf-attachment-dropzone[data-drag='active'] .tf-attachment-pick-sub {
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  font-weight: 600;
+}
 .tf-attachment-input {
   position: absolute;
   width: 1px;
@@ -1296,23 +1370,37 @@ export const SESSION_STYLES = `
 /** Composer cell styles; rendered with the cell because the panel may be closed. */
 export const COMPOSER_STYLES = `
 .tf-composer { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
-.tf-composer-field { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
-.tf-composer-label { font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); white-space: nowrap; }
-.tf-composer-select {
-  height: 24px;
-  max-width: 132px;
-  padding: 0 6px;
-  border: 1px solid var(--dsw-alias-border-l2, transparent);
-  border-radius: 7px;
-  background: transparent;
+/* Trigger matches the Host's composer selects (permission, model): same height,
+   radius, spacing, type scale and interaction colors, all from theme tokens. */
+.tf-composer-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 220px;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm, 7px);
+  background: none;
   color: var(--dsw-alias-label-secondary, inherit);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
   cursor: pointer;
   outline: none;
 }
-.tf-composer-select:focus { border-color: var(--dsw-alias-label-caption, transparent); }
-.tf-composer-select:disabled { opacity: .55; cursor: default; }
+@media (hover: hover) {
+  .tf-composer-trigger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, transparent); }
+}
+.tf-composer-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+}
+.tf-composer-trigger:disabled { color: var(--dsw-alias-label-dimmed, inherit); cursor: default; }
+.tf-composer-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-composer-chevron { display: inline-flex; flex: none; color: var(--dsw-alias-label-caption, inherit); transition: transform .12s; }
+.tf-composer-chevron-open { transform: rotate(180deg); }
 .tf-composer-note {
   font-size: 11px;
   color: var(--dsw-alias-label-caption, inherit);
