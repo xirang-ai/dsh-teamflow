@@ -92,8 +92,11 @@ describe('xirang-detail persona prompt', () => {
       '是否写回',
       'teamflow_update_design_doc',
       'teamflow_create_design_doc',
+      'teamflow_delete_design_doc',
+      '不可恢复',
     ])
     assert.match(prompt, /用户确认后才调用 teamflow_create_design_doc 或 teamflow_update_design_doc/)
+    assert.match(prompt, /得到明确同意后才调用 teamflow_delete_design_doc/)
   })
 
   it('states all seven out-of-scope items', () => {

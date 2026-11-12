@@ -22,6 +22,7 @@ import { createBugTool } from './create-bug.ts'
 import { createDesignDocTool } from './create-design-doc.ts'
 import { createRequirementTool } from './create-requirement.ts'
 import { createStoryTool } from './create-story.ts'
+import { deleteDesignDocTool } from './delete-design-doc.ts'
 import { deleteStoryTool } from './delete-story.ts'
 import { finishRunTool } from './finish-run.ts'
 import { getBugTool } from './get-bug.ts'
@@ -59,7 +60,7 @@ export type ToolProfile = (typeof TOOL_PROFILES)[number]
  * Tool names per profile.
  *
  * `requirement` collects the requirement and its outline design;
- * `detail` writes detailed designs while reading the outline;
+ * `detail` writes and deletes detailed designs while reading the outline;
  * `split` writes stories while reading detailed designs;
  * `dev` executes a story with every document read-only;
  * `bug` collects and merges defects.
@@ -81,6 +82,7 @@ export const PROFILE_TOOL_NAMES: Readonly<Record<ToolProfile, readonly string[]>
     'teamflow_get_design_doc',
     'teamflow_create_design_doc',
     'teamflow_update_design_doc',
+    'teamflow_delete_design_doc',
     'teamflow_list_records',
     'teamflow_list_workspaces',
   ],
@@ -119,6 +121,7 @@ export const PROFILE_TOOL_NAMES: Readonly<Record<ToolProfile, readonly string[]>
     'teamflow_get_requirement',
     'teamflow_create_design_doc',
     'teamflow_update_design_doc',
+    'teamflow_delete_design_doc',
     'teamflow_get_design_doc',
     'teamflow_link_requirement_session',
     'teamflow_link_session',
@@ -174,6 +177,7 @@ export function apply(ctx: Context, config: Config): void {
     getRequirementTool(environment),
     createDesignDocTool(environment),
     updateDesignDocTool(environment),
+    deleteDesignDocTool(environment),
     getDesignDocTool(environment),
     linkRequirementSessionTool(environment),
     linkSessionTool(environment),
