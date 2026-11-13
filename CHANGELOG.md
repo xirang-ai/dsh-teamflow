@@ -4,6 +4,25 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。条目按 `Added` / `Changed` / `Fixed` 分类，只写用户或开发者可观察、能追到代码或命令的变化；同一模块的多处小修合并为一条，并写清覆盖了哪几处。
 
+## [0.1.3] - 2026-11-13
+
+详细设计文档可以单独删除，工作台首页标题右侧以小字显示当前插件版本。
+
+### 兼容性
+
+- DSH `>=0.2.2-rc.1 <0.3.0`（当前 `0.2.2-rc.1`），Node `>=24.9.0`；数据结构 schema 保持 `17`，本次无迁移，旧库直接沿用。
+- 工具数从 20 增到 21（新增 `teamflow_delete_design_doc`，在 `detail` 与 `all` 预设可见）；既有工具的入参与返回不变。
+- 删除详细设计不可恢复：正文文件与故事覆盖关系一并删除；覆盖它的故事若仍有未结束运行，或处于 `developing` / `self_testing`，删除会被拒绝。
+
+### Added
+
+- 工作台首页版本号：标题右侧显示插件版本（`v0.1.3`），构建期从 `package.json` 注入，与 Host 端 `meta.plugin_version` 同源；文案走中英文 locale 字典。
+- 工具 `teamflow_delete_design_doc`：按文档 id 删除详细设计，级联清理 `design_doc_stories` 覆盖关系并删除正文文件；详细设计 Agent 的提示词补充「删旧建新」的不可恢复说明与确认闸口。
+
+### Changed
+
+- `design_doc` 成为独立可删类型：删除预览会列出覆盖它的故事，删除结果新增 `removedLinks` 计数；按需求删除时仍连同其详细设计一起删除，行为不变。
+
 ## [0.1.2] - 2026-11-11
 
 需求、详细设计、故事与缺陷正文从工作区 `.xirang-ai/dsh-teamflow/` 移到插件目录的 `docs/`，并支持用 `docsDir` 自定义文档根；故事与缺陷新增可多次续接的讨论会话。

@@ -4,12 +4,12 @@
 
 Teamflow (`@xirang-ai/dsh-teamflow`) is a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin that turns **requirements → high-level design → detailed design → stories → development runs → bug fixes** into a persistent, resumable pipeline. It also adds a team workbench called **Xirang Workbench** to the DSH Web UI.
 
-Version: **`0.1.2`** (documents move into the plugin directory; stories and bugs gain discussion sessions; see [CHANGELOG.md](CHANGELOG.md)).
+Version: **`0.1.3`** (detailed-design documents can be deleted individually; the workbench header shows the plugin version; see [CHANGELOG.md](CHANGELOG.md)).
 
 - Data lives in SQLite; documents live in the plugin directory (default `<dataDir>/docs`), so closing a session does not lose progress.
 - Five agent presets cover requirements, stories, bugs, development, and detailed design. Each preset controls its own tool boundary.
 - The workbench provides lists, detail pages, a flow chart, a create page, a read-only session tab, and guarded deletion.
-- Twenty `teamflow_*` tools write interview and development results back to the database and plugin documents.
+- Twenty-one `teamflow_*` tools write interview and development results back to the database and plugin documents.
 
 ## Requirements
 
