@@ -44,6 +44,7 @@ import type { FileTreeNode } from './files.ts'
 import { useEmptyRequestedView } from './requested-view.ts'
 import type { UseRequestedView } from './requested-view.ts'
 import { sessionDisplayTitle, useEmptySessions } from './session-title.ts'
+import { PLUGIN_VERSION } from './version.ts'
 import type {
   BugSeverity,
   BugStatus,
@@ -1689,7 +1690,10 @@ export function WorkbenchPage({
             <>
               <header className="tf-head">
                 <div className="tf-head-main">
-                  <h1 className="tf-title">{t('page.title')}</h1>
+                  <h1 className="tf-title">
+                    {t('page.title')}
+                    <span className="tf-version">{t('page.version', { version: PLUGIN_VERSION })}</span>
+                  </h1>
                   <p className="tf-sub">{t('page.subtitle')}</p>
                 </div>
                 <div className="tf-head-actions">

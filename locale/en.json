@@ -218,6 +218,7 @@
   "page.retry": "Retry",
   "page.subtitle": "Defects come first, then running work, work waiting to start, and requirements still in discussion.",
   "page.title": "Xirang Workbench",
+  "page.version": "v{version}",
   "panel": "Xirang Workbench",
   "remote.bugId.empty": "A bug id is required.",
   "remote.doc.notFound": "Detailed-design document {id} does not exist.",
