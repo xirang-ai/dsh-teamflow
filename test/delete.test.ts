@@ -231,7 +231,7 @@ describe('batch cleanup', () => {
       { kind: 'bug', id: fixing.id },
     ] as const
     const preview = workflow.previewDeletions(targets)
-    assert.deepEqual(preview.counts, { bug: 2, story: 1, requirement: 0 })
+    assert.deepEqual(preview.counts, { bug: 2, story: 1, requirement: 0, design_doc: 0 })
     assert.equal(preview.deletableCount, 2)
     assert.equal(preview.skippedCount, 1)
     assert.equal(preview.items[2]?.reasonCode, 'invalid_transition')

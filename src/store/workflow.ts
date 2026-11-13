@@ -94,7 +94,9 @@ import { withTransaction } from './transaction.ts'
  * someone decides it means "idle". `story.developing`, `story.self_testing` and
  * `bug.fixing` are the executing states today.
  */
-const DELETABLE_STATUSES: Readonly<Record<DeletableKind, readonly string[]>> = {
+const DELETABLE_STATUSES: Readonly<
+  Record<Exclude<DeletableKind, 'design_doc'>, readonly string[]>
+> = {
   story: ['ready', 'done', 'completed', 'cancelled'],
   bug: ['reported', 'fixed', 'completed', 'wontfix'],
   requirement: ['draft', 'completed', 'archived'],
@@ -1652,6 +1654,7 @@ export class WorkflowStore {
   #deleteOne(target: DeleteTarget, preview: DeletePreviewItem): DeleteOutcome {
     const staged: { readonly root: string; readonly doc: StagedDoc }[] = []
     let committed = false
+    let removedLinks = 0
     try {
       const outcome = withTransaction(this.#db, () => {
         // Re-check inside the write transaction: a run may have started between
@@ -1683,13 +1686,28 @@ export class WorkflowStore {
           this.#db.prepare('DELETE FROM runs WHERE story_id = ?').run(target.id)
         } else if (target.kind === 'bug') {
           this.#db.prepare('DELETE FROM runs WHERE bug_id = ?').run(target.id)
+        } else if (target.kind === 'design_doc') {
+          // Coverage links cascade from `design_docs`, but delete them
+          // explicitly so the removed count is known and does not depend on
+          // the connection's foreign-keys pragma.
+          const links = this.#db
+            .prepare('SELECT COUNT(*) AS n FROM design_doc_stories WHERE doc_id = ?')
+            .get(target.id)
+          removedLinks = Number(links?.['n'] ?? 0)
+          this.#db.prepare('DELETE FROM design_doc_stories WHERE doc_id = ?').run(target.id)
         } else {
           // `design_doc_stories` is ON DELETE CASCADE from this table, and
           // `requirement_sessions` cascades from `requirements`.
           this.#db.prepare('DELETE FROM design_docs WHERE requirement_id = ?').run(target.id)
         }
         const table =
-          target.kind === 'story' ? 'stories' : target.kind === 'bug' ? 'bugs' : 'requirements'
+          target.kind === 'story'
+            ? 'stories'
+            : target.kind === 'bug'
+              ? 'bugs'
+              : target.kind === 'design_doc'
+                ? 'design_docs'
+                : 'requirements'
         const changes = Number(this.#db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(target.id).changes)
         if (changes === 0) {
           throw new WorkflowError('not_found', `${target.kind} ${target.id} does not exist`)
@@ -1700,7 +1718,8 @@ export class WorkflowStore {
           id: target.id,
           title: current.title,
           ok: true,
-          removedDocs: current.docs.length,
+          removedDocs: target.kind === 'design_doc' ? 1 : current.docs.length,
+          removedLinks,
           removedRuns: current.runCount,
           error: null,
         } satisfies DeleteOutcome
@@ -1724,6 +1743,7 @@ export class WorkflowStore {
         title: preview.title,
         ok: false,
         removedDocs: 0,
+        removedLinks: 0,
         removedRuns: 0,
         error: {
           code: error instanceof WorkflowError ? error.code : 'delete_failed',
@@ -1743,7 +1763,7 @@ export class WorkflowStore {
   }
 
   #summary(items: readonly DeletePreviewItem[]): DeletePreview {
-    const counts: Record<DeletableKind, number> = { bug: 0, story: 0, requirement: 0 }
+    const counts: Record<DeletableKind, number> = { bug: 0, story: 0, requirement: 0, design_doc: 0 }
     for (const item of items) counts[item.kind] += 1
     return {
       items,
@@ -1794,6 +1814,50 @@ export class WorkflowStore {
         activeRunId: activeRun,
         docs,
         stories,
+        runCount: 0,
+      }
+    }
+
+    if (target.kind === 'design_doc') {
+      const doc = this.getDesignDoc(target.id)
+      if (doc === null) return this.#missingPreview(target)
+      const requirement = this.getRequirement(doc.requirementId)
+      if (requirement === null) return this.#missingPreview(target)
+      // A document has no lifecycle of its own, so only the stories it covers
+      // can make its deletion unsafe: an executing story still reads it.
+      const coveredStoryIds = this.listDocStoryIds(doc.id)
+      const activeRun = this.#activeRunForStories(coveredStoryIds)
+      const busyStory = coveredStoryIds
+        .map((storyId) => this.getStory(storyId))
+        .find(
+          (story) =>
+            story !== null && (story.status === 'developing' || story.status === 'self_testing'),
+        )
+      const blocked =
+        activeRun !== null
+          ? {
+              code: 'has_active_run' as const,
+              message: `design document ${doc.id} is covered by a story whose run ${activeRun} is still running; cancel the run before deleting`,
+            }
+          : busyStory === null || busyStory === undefined
+            ? null
+            : {
+                code: 'invalid_transition' as const,
+                message: `design document ${doc.id} is covered by story ${busyStory.id}, which is ${busyStory.status}; only documents covered by idle stories can be deleted`,
+              }
+      return {
+        kind: 'design_doc',
+        id: doc.id,
+        found: true,
+        title: doc.title,
+        status: requirement.status,
+        workspaceId: requirement.workspaceId,
+        deletable: blocked === null,
+        reasonCode: blocked?.code ?? null,
+        reason: blocked?.message ?? null,
+        activeRunId: activeRun,
+        docs: [],
+        stories: [],
         runCount: 0,
       }
     }
@@ -1860,7 +1924,7 @@ export class WorkflowStore {
   }
 
   #deletionBlock(input: {
-    readonly kind: DeletableKind
+    readonly kind: Exclude<DeletableKind, 'design_doc'>
     readonly id: string
     readonly status: string
     readonly statusAllowed: boolean
@@ -1910,6 +1974,7 @@ export class WorkflowStore {
   #filesToDelete(target: DeleteTarget): string[] {
     if (target.kind === 'story') return [this.#requireStory(target.id).contentPath]
     if (target.kind === 'bug') return [this.#requireBug(target.id).contentPath]
+    if (target.kind === 'design_doc') return [this.#requireDesignDoc(target.id).contentPath]
     const requirement = this.#requireRequirement(target.id)
     return [
       requirement.contentPath,

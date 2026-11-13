@@ -4,12 +4,12 @@
 
 Teamflow（`@xirang-ai/dsh-teamflow`）是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（下称 DSH）的插件：把**需求 → 概要设计 → 详细设计 → 故事拆分 → 研发执行 → 缺陷修复**做成一条可持久化、可断点续跑的流水线，并在 Web 端提供团队工作台「息壤工作台」。
 
-当前版本：**`0.1.2`**（文档迁入插件目录，故事与缺陷支持讨论会话，变更记录见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本：**`0.1.3`**（详细设计文档可单独删除，工作台首页显示版本号，变更记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
 - 数据落在 SQLite，文档落在插件目录（默认 `<dataDir>/docs`），关掉会话不丢进度。
 - 五个 Agent 预设分别负责需求、故事、缺陷、研发和详细设计，工具边界由预设控制。
 - 工作台提供列表、详情、流程图、创建页、会话内只读页签，以及受控的删除入口。
-- 二十个 `teamflow_*` 工具把访谈与研发结果写回数据库和插件文档。
+- 二十一个 `teamflow_*` 工具把访谈与研发结果写回数据库和插件文档。
 
 ## 环境要求
 

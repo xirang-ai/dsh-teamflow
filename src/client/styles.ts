@@ -28,6 +28,14 @@ export const STYLES = `
 .tf-head { display: flex; align-items: flex-start; gap: 16px; padding: 20px 0 14px; }
 .tf-head-main { min-width: 0; flex: 1 1 auto; }
 .tf-title { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.tf-version {
+  margin-left: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .tf-sub { margin: 3px 0 0; font-size: 12px; color: var(--dsw-alias-label-tertiary, inherit); }
 .tf-head-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; padding-top: 2px; }
 .tf-error {

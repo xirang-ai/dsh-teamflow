@@ -48,6 +48,10 @@ async function buildClient() {
     // React Flow's base stylesheet is inlined into the bundle as text and
     // rendered by the chart's own <style> tag, next to the plugin styles.
     loader: { '.css': 'text' },
+    // The browser half cannot read `package.json` at runtime, so the version
+    // the panel shows next to its title is stamped in here from the same
+    // manifest field the Host reads and the banner above uses.
+    define: { __TEAMFLOW_VERSION__: JSON.stringify(pkg.version) },
     logLevel: 'warning',
     write: false,
     charset: 'utf8',

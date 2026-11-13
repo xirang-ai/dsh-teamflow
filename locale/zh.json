@@ -218,6 +218,7 @@
   "page.retry": "重试",
   "page.subtitle": "缺陷优先；其下依次是执行中的需求与故事、待开始的工作，以及仍在讨论的需求。",
   "page.title": "息壤工作台",
+  "page.version": "v{version}",
   "panel": "息壤工作台",
   "remote.bugId.empty": "缺少缺陷编号。",
   "remote.doc.notFound": "详细设计 {id} 不存在。",

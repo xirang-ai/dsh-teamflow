@@ -432,11 +432,12 @@ export interface RunFilter {
 /**
  * Record types the workbench can physically delete.
  *
- * Detailed-design documents (`design_docs`) are not a target of their own: they
- * are records *of* a requirement and are removed with it, because a document
- * has no meaning once the requirement that explains it is gone.
+ * A detailed-design document (`design_doc`) is deletable on its own as well as
+ * through its requirement: rewriting a document from scratch starts by removing
+ * the old one, and only then does a fresh document make sense. Deleting one
+ * removes its `design_doc_stories` coverage links with it.
  */
-export const DELETABLE_KINDS = ['bug', 'story', 'requirement'] as const
+export const DELETABLE_KINDS = ['bug', 'story', 'requirement', 'design_doc'] as const
 export type DeletableKind = (typeof DELETABLE_KINDS)[number]
 
 /** One record the user asked to delete. */
@@ -445,7 +446,7 @@ export interface DeleteTarget {
   readonly id: string
 }
 
-/** A detailed-design document that will be deleted together with its requirement. */
+/** A detailed-design document that will be deleted with its requirement. */
 export interface DeleteDocRef {
   readonly id: string
   readonly title: string
@@ -471,6 +472,7 @@ export interface DeletePreviewItem {
   readonly id: string
   readonly found: boolean
   readonly title: string
+  /** Record status; a detailed design reports the status of its requirement. */
   readonly status: string
   readonly workspaceId: string
   readonly deletable: boolean
@@ -506,6 +508,8 @@ export interface DeleteOutcome {
   readonly title: string
   readonly ok: boolean
   readonly removedDocs: number
+  /** `design_doc_stories` links removed with a detailed design; 0 otherwise. */
+  readonly removedLinks: number
   readonly removedRuns: number
   readonly error: { readonly code: string; readonly message: string } | null
 }
