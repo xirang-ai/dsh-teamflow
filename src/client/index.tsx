@@ -30,7 +30,6 @@ import {
 } from '../remote/contract.ts'
 import type { DeletePreview, DeleteReport, DeleteTarget, DiscussionSubjectType } from '../store/model.ts'
 import type {
-  AgentPresetRemote,
   ClientContext,
   ConversationLike,
   ConversationOutcome,
@@ -48,8 +47,6 @@ import type {
   WorkspaceOption,
   WorkspacesLike,
 } from './context.ts'
-import { ComposerKindPicker } from './composer.tsx'
-import { rememberComposerKind } from './composer-kind.ts'
 import { isImageFile, uploadFailureReason } from './create-attachment.ts'
 import { WorkbenchIcon } from './icon.tsx'
 import { WorkbenchPage, type WorkbenchData } from './page.tsx'
@@ -206,9 +203,6 @@ async function openConversation(
       // reusing it keeps retries from piling up empty conversations.
       const reused = options.attachmentSessionId
       const sessionId = reused ?? (await sessions.create(sessionOptions))
-      if (reused === undefined && options.composerKind !== undefined) {
-        rememberComposerKind(sessionId, options.composerKind)
-      }
       options.onAttachment?.({ type: 'created', sessionId })
       const reference = sessions.retain(sessionId, { source: 'teamflowWorkbench' })
       try {
@@ -628,29 +622,6 @@ export function apply(ctx: ClientContext): void {
         ),
       ),
     'teamflow: conversation workbench tab',
-  )
-
-  // The composer cell only exists while a conversation is on screen; it is
-  // how a blank session started with "新会话" reaches the same interviewer
-  // flows as the Create page.
-  ctx.effect(
-    () =>
-      ctx.slots.inject('conversation.input.left', () =>
-        ctx.slots.register(
-          {
-            name: 'conversation.input.left',
-            id: 'teamflow.create-kind',
-            order: 80,
-            locale: NAMESPACE,
-            label: () => t('composer.label'),
-            inject: () => ({
-              agentPresets: ctx.get<AgentPresetRemote>('remote.agentPresets'),
-            }),
-          },
-          ComposerKindPicker,
-        ),
-      ),
-    'teamflow: composer kind picker',
   )
 
   // The permission badge sits in the header's action list, next to the Host's

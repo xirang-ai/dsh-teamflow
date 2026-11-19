@@ -10,8 +10,6 @@
  */
 import type { ComponentType } from 'react'
 
-import type { ComposerKind } from './composer-kind.ts'
-
 /** Undo callback returned by every registration and effect. */
 export type Disposer = () => void
 
@@ -355,8 +353,6 @@ export interface OpenConversationOptions {
   readonly agentPreset?: string
   /** Send the first message immediately instead of leaving it as a draft. */
   readonly autoSend?: boolean
-  /** Visible creation kind for the composer; remembered per session. */
-  readonly composerKind?: ComposerKind
   /**
    * Runs after the session exists and before the first prompt is sent.
    *
@@ -408,18 +404,6 @@ export interface RemoteCallResult<Value> {
     /** Structured payload the owner attached; the upload flow reads `reason`. */
     readonly details?: Readonly<Record<string, unknown>>
   }
-}
-
-/** One preset row returned by the registry. */
-export interface AgentPresetRowLike {
-  readonly id: string
-  readonly isDefault?: boolean
-}
-
-/** Preset registry face injected into the composer and Create page. */
-export interface AgentPresetRemote {
-  select(agentId: string, agentPreset: string): Promise<RemoteCallResult<string>>
-  list(): Promise<RemoteCallResult<{ presets: readonly AgentPresetRowLike[] }>>
 }
 
 /** Slot registry: registration plus waiting for a slot to exist. */

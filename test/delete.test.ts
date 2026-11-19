@@ -98,7 +98,7 @@ describe('requirement cascade', () => {
     assert.equal(workflow.listBoard().docs.length, 0)
   })
 
-  it('refuses a requirement that still owns stories, and keeps its files', () => {
+  it('deletes a requirement together with its stories, designs, runs and files', () => {
     const { handle, root } = open()
     const workflow = handle.workflow
     const requirement = workflow.createRequirement({
@@ -107,21 +107,35 @@ describe('requirement cascade', () => {
       summary: '父需求摘要',
     })
     const story = workflow.createStory({ requirementId: requirement.id, title: '子故事' })
-    void story
-    workflow.createDesignDoc({ requirementId: requirement.id, title: '还不该删的详设' })
+    const run = workflow.startStoryRun(story.id)
+    workflow.beginSelfTest(run.id)
+    workflow.finishRun({ runId: run.id, selfTestStatus: 'passed', summary: '完成' })
+    const doc = workflow.createDesignDoc({ requirementId: requirement.id, title: '一并删除的详设' })
 
     const preview = workflow.previewDeletions([{ kind: 'requirement', id: requirement.id }])
-    assert.equal(preview.items[0]?.deletable, false)
-    assert.equal(preview.items[0]?.reasonCode, 'has_children')
+    assert.equal(preview.items[0]?.deletable, true)
     assert.equal(preview.items[0]?.stories.length, 1)
     assert.equal(preview.items[0]?.docs.length, 1)
-    assert.equal(preview.docCount, 0, 'a blocked requirement contributes no cascade')
+    assert.equal(preview.items[0]?.runCount, 1)
+    assert.equal(preview.storyCount, 1)
+    assert.equal(preview.docCount, 1)
+    assert.equal(preview.runCount, 1)
 
     const report = workflow.deleteRecords([{ kind: 'requirement', id: requirement.id }])
-    assert.equal(report.failed, 1)
-    assert.equal(report.results[0]?.error?.code, 'has_children')
-    assert.notEqual(workflow.getRequirement(requirement.id), null)
-    assert.ok(existsSync(join(root, requirement.contentPath)))
+    assert.equal(report.succeeded, 1)
+    assert.equal(report.failed, 0)
+    assert.equal(report.results[0]?.removedStories, 1)
+    assert.equal(report.results[0]?.removedDocs, 1)
+    assert.equal(report.results[0]?.removedRuns, 1)
+
+    assert.equal(workflow.getRequirement(requirement.id), null)
+    assert.equal(workflow.getStory(story.id), null)
+    assert.equal(workflow.getRun(run.id), null)
+    assert.equal(count(handle, 'design_docs', 'requirement_id', requirement.id), 0)
+    assert.equal(count(handle, 'stories', 'requirement_id', requirement.id), 0)
+    for (const relative of [requirement.contentPath, story.contentPath, doc.contentPath]) {
+      assert.ok(!existsSync(join(root, relative)), `${relative} should be removed with the requirement`)
+    }
   })
 })
 
@@ -246,25 +260,26 @@ describe('batch cleanup', () => {
     assert.notEqual(workflow.getBug(fixing.id), null)
   })
 
-  it('rejects a batch that spans workspaces without deleting anything', () => {
+  it('cleans one batch that spans workspaces', () => {
     const { handle } = open()
     const workflow = handle.workflow
     const first = workflow.createStory({ workspaceId: 'ws-one', title: '一' })
     const second = workflow.createStory({ workspaceId: 'ws-two', title: '二' })
-    rejects('invalid_input', () =>
-      workflow.previewDeletions([
-        { kind: 'story', id: first.id },
-        { kind: 'story', id: second.id },
-      ]),
+    const targets = [
+      { kind: 'story', id: first.id },
+      { kind: 'story', id: second.id },
+    ] as const
+    const preview = workflow.previewDeletions(targets)
+    assert.equal(preview.deletableCount, 2)
+    assert.deepEqual(
+      preview.items.map((item) => item.workspaceId),
+      ['ws-one', 'ws-two'],
     )
-    rejects('invalid_input', () =>
-      workflow.deleteRecords([
-        { kind: 'story', id: first.id },
-        { kind: 'story', id: second.id },
-      ]),
-    )
-    assert.notEqual(workflow.getStory(first.id), null)
-    assert.notEqual(workflow.getStory(second.id), null)
+    const report = workflow.deleteRecords(targets)
+    assert.equal(report.succeeded, 2)
+    assert.equal(report.failed, 0)
+    assert.equal(workflow.getStory(first.id), null)
+    assert.equal(workflow.getStory(second.id), null)
   })
 
   it('reports a missing record as not_found without touching its neighbours', () => {

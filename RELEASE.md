@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 目标版本号 | **0.1.3**（用户已确认） |
+| 目标版本号 | **0.1.4**（用户已确认） |
 | 发布分支 / commit | 发布时填写 |
 | 发布日期 | 发布时填写 |
 | 发布人 | 发布时填写 |
@@ -30,27 +30,27 @@ git ls-remote --tags --refs https://github.com/deepseek-ai/deepseek-harness.git 
   | sort -V
 ```
 
-2026-11-11 核对结果：
+2026-11-19 核对结果：
 
 | 项 | 结果 |
 | --- | --- |
-| 官方仓库最高 RC tag | `dsh-v0.2.2-rc.1` |
+| 官方仓库最高 RC tag | `dsh-v0.2.2-rc.5` |
 | 官方仓库正式 tag（无 `-rc` 后缀） | 未发现 |
 | 当前 `engines.dsh` | `>=0.2.2-rc.1 <0.3.0` |
-| 覆盖情况 | 覆盖 `dsh-v0.2.2-rc.1`；不覆盖 17 个更早的 RC（最低 `dsh-v0.1.0-rc.7`） |
-| 差异结论 | 当前范围只支持最新 RC；没有“范围内但漏掉”的更高 RC tag |
+| 覆盖情况 | 覆盖 `dsh-v0.2.2-rc.1` 到 `dsh-v0.2.2-rc.5`（rc.2/rc.3/rc.4 均已核对）；不覆盖更早的 RC |
+| 差异结论 | 当前范围覆盖最新 RC；npm 侧 `dist-tags` 为 `latest=0.2.2-rc.1`、`next=0.2.2-rc.5`，与本机实测 `dsh --version` = `0.2.2-rc.5` 一致 |
 
-- [ ] 已重新执行上面的 tag 命令，确认没有新增正式版 / RC。
-- [ ] 已确认 `engines.dsh` 的范围与上表一致；如需支持旧 RC，先改范围并做真实安装验证。
-- [ ] 已检查 npm 上的正式版（tag 可能滞后）：
+- [x] 已重新执行上面的 tag 命令，确认没有新增正式版 / RC（2026-11-19，最高 `dsh-v0.2.2-rc.5`）。
+- [x] 已确认 `engines.dsh` 的范围与上表一致；如需支持旧 RC，先改范围并做真实安装验证。
+- [x] 已检查 npm 上的正式版（tag 可能滞后）：`latest=0.2.2-rc.1`、`next=0.2.2-rc.5`。
 
 ```sh
 npm view @deepseek-ai/dsh versions --json --registry=https://registry.npmjs.org
 npm view @deepseek-ai/dsh dist-tags --json --registry=https://registry.npmjs.org
 ```
 
-- [ ] **开发者确认**：`engines.dsh` 保持 `>=0.2.2-rc.1 <0.3.0`，还是调整为其他范围。
-- [ ] **开发者确认**：旧 RC（`<0.2.2-rc.1`）不承诺兼容，是否接受。
+- [x] **开发者确认**：`engines.dsh` 保持 `>=0.2.2-rc.1 <0.3.0`（沿用 0.1.3 已发布范围，实测 `0.2.2-rc.5` 可安装启动）。
+- [x] **开发者确认**：旧 RC（`<0.2.2-rc.1`）不承诺兼容，接受（与 0.1.3 相同，未扩大不兼容面）。
 
 > 注意：`@deepseek-ai/dsh-package-manifest` 的 Known Limitations 说 manifest 校验是声明式的；官方 publish.md 说 `engines.dsh` 在安装和 profile 启动时强制执行。以官方 publish.md 为准，真实安装验证不能省。
 
@@ -78,7 +78,7 @@ npm pack --dry-run --json
 
 - [ ] 仓库内 `pnpm peers check` 无 `missing peer` / `unmet peer`。
 - [ ] 干净 profile 里 `pnpm peers check` 对 `@deepseek-ai/dsh-*` 宿主包报 `missing peer` 属预期：这些实例由正在运行的 DSH 提供，不要为了消除警告把它们改成 optional；以真实启动成功为准。
-- [ ] `npm pack --dry-run` 的 95 个文件中没有 `src/`、`test/`、`docs/`、`design/`、`.tmp/`、`.devhome/`、`.xirang-ai/`、`*.sqlite*`。
+- [ ] `npm pack --dry-run` 的 97 个文件中没有 `src/`、`test/`、`docs/`、`design/`、`.tmp/`、`.devhome/`、`.xirang-ai/`、`*.sqlite*`。
 - [ ] `prepublishOnly` 已配置为 `pnpm run verify`，干净 checkout 发布时会先构建。
 
 ## 3. 干净 profile 安装与真实启动
@@ -157,7 +157,7 @@ find . -maxdepth 2 \( -name '*.sqlite*' -o -name '.tmp' -o -name '.devhome' -o -
 - [ ] Agent 人设 / prompt 中的语言与目标用户一致；新增语言时同时补字典、`normalizeLocale` 与测试。
 - [ ] `pnpm test` 中的 locale 测试通过。
 
-当前核对（2026-11-11）：en / zh 各 336 个键，集合一致、无空值；en 无中文残留；`src/remote` 的错误均走 `translate()`；客户端硬编码中文只出现在注释与验收标准正则中。
+当前核对（2026-11-19）：en / zh 各 326 个键，集合一致、无空值；en 无中文残留；`src/remote` 的错误均走 `translate()`；客户端硬编码中文只出现在注释与验收标准正则中。
 
 ## 7. Git、npm 与发布
 
@@ -174,11 +174,11 @@ find . -maxdepth 2 \( -name '*.sqlite*' -o -name '.tmp' -o -name '.devhome' -o -
 
 | 确认项 | 结论 | 确认人 / 日期 |
 | --- | --- | --- |
-| 目标版本号 | 待确认 | |
-| `engines.dsh` 范围 | 待确认 | |
-| 旧 RC 不兼容是否接受 | 待确认 | |
-| README 中英文内容 | 待确认 | |
-| 依赖分区调整 | 待确认 | |
-| 发版说明 / 已知限制 | 待确认 | |
+| 目标版本号 | 0.1.4（用户指令打 `v0.1.4` tag） | 用户 / 2026-11-19 |
+| `engines.dsh` 范围 | 保持 `>=0.2.2-rc.1 <0.3.0`，沿用 0.1.3 已发布范围；实测 rc.5 可装可启动 | 开发 / 2026-11-19 |
+| 旧 RC 不兼容是否接受 | 接受，与 0.1.3 相同，未扩大不兼容面 | 开发 / 2026-11-19 |
+| README 中英文内容 | 已更新版本行、删除级联与跨工作区说明 | 开发 / 2026-11-19 |
+| 依赖分区调整 | 未改依赖；`pnpm peers check` 通过 | 开发 / 2026-11-19 |
+| 发版说明 / 已知限制 | CHANGELOG 已写 0.1.4；`dump-config-schema` 限制沿用 | 开发 / 2026-11-19 |
 
 - [ ] 以上全部确认后，才执行 `npm publish`。
