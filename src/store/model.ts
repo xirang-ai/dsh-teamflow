@@ -304,7 +304,6 @@ export type WorkflowErrorCode =
   | 'invalid_transition'
   | 'duplicate_active_run'
   | 'has_active_run'
-  | 'has_children'
   | 'file_error'
 
 /** A rejected domain operation, separate from SQLite or Host failures. */
@@ -482,7 +481,7 @@ export interface DeletePreviewItem {
   readonly activeRunId: string | null
   /** Detailed designs that will be removed with a requirement; empty for stories/bugs. */
   readonly docs: readonly DeleteDocRef[]
-  /** stories under a requirement; while any exist the requirement cannot be deleted. */
+  /** stories under a requirement; they are deleted with it (cascade). */
   readonly stories: readonly DeleteChildRef[]
   /** Run rows that will be removed with the record (history, never an active run). */
   readonly runCount: number
@@ -497,6 +496,8 @@ export interface DeletePreview {
   readonly skippedCount: number
   /** Total detailed-design documents that will be removed. */
   readonly docCount: number
+  /** Total stories that will be removed with their requirement. */
+  readonly storyCount: number
   /** Total run-history rows that will be removed with the deletable records. */
   readonly runCount: number
 }
@@ -508,6 +509,8 @@ export interface DeleteOutcome {
   readonly title: string
   readonly ok: boolean
   readonly removedDocs: number
+  /** Stories deleted with a requirement; 0 for other kinds. */
+  readonly removedStories: number
   /** `design_doc_stories` links removed with a detailed design; 0 otherwise. */
   readonly removedLinks: number
   readonly removedRuns: number

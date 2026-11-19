@@ -76,7 +76,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 目标运行时 | `@deepseek-ai/dsh` **0.2.2-rc.1**（本机全局安装） |
+| 目标运行时 | `@deepseek-ai/dsh` **0.2.2-rc.5**（本机全局安装） |
 | Node | `>=24.9.0`（与 DSH `engines` 一致） |
 | Cordis | 4.1.x |
 | Schemastery | 3.19.x（`@deepseek-ai/schemastery`） |

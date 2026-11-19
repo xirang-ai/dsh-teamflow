@@ -1624,7 +1624,6 @@ export class WorkflowStore {
   previewDeletions(targets: readonly DeleteTarget[]): DeletePreview {
     const normalized = this.#normalizeTargets(targets)
     const items = normalized.map((target) => this.#previewOne(target))
-    this.#assertSingleWorkspace(items)
     return this.#summary(items)
   }
 
@@ -1638,7 +1637,6 @@ export class WorkflowStore {
   deleteRecords(targets: readonly DeleteTarget[]): DeleteReport {
     const normalized = this.#normalizeTargets(targets)
     const previews = normalized.map((target) => this.#previewOne(target))
-    this.#assertSingleWorkspace(previews)
     const results = normalized.map((target, index) => {
       const preview = previews[index]
       if (preview === undefined) throw new WorkflowError('invalid_input', 'delete target disappeared')
@@ -1655,6 +1653,7 @@ export class WorkflowStore {
     const staged: { readonly root: string; readonly doc: StagedDoc }[] = []
     let committed = false
     let removedLinks = 0
+    let removedStories = 0
     try {
       const outcome = withTransaction(this.#db, () => {
         // Re-check inside the write transaction: a run may have started between
@@ -1696,9 +1695,35 @@ export class WorkflowStore {
           removedLinks = Number(links?.['n'] ?? 0)
           this.#db.prepare('DELETE FROM design_doc_stories WHERE doc_id = ?').run(target.id)
         } else {
-          // `design_doc_stories` is ON DELETE CASCADE from this table, and
-          // `requirement_sessions` cascades from `requirements`.
+          // Deleting a requirement now takes its whole subtree with it: the
+          // stories it owns, every detailed design, and the runs recorded
+          // against those stories. Nothing is left behind pointing at a
+          // deleted parent, so the user never has to delete bottom-up.
+          // `design_doc_stories` cascades from both `design_docs` and
+          // `stories`; the links are counted first so the report can say how
+          // many were dropped.
+          const docLinks = this.#db
+            .prepare(
+              `SELECT COUNT(*) AS n FROM design_doc_stories
+               WHERE doc_id IN (SELECT id FROM design_docs WHERE requirement_id = ?)`,
+            )
+            .get(target.id)
+          removedLinks = Number(docLinks?.['n'] ?? 0)
+          const storyIds = this.#db
+            .prepare('SELECT id FROM stories WHERE requirement_id = ?')
+            .all(target.id)
+            .map((row) => String(row['id']))
+          removedStories = storyIds.length
+          const deleteRuns = this.#db.prepare('DELETE FROM runs WHERE story_id = ?')
+          for (const storyId of storyIds) deleteRuns.run(storyId)
+          this.#db
+            .prepare(
+              `DELETE FROM design_doc_stories
+               WHERE doc_id IN (SELECT id FROM design_docs WHERE requirement_id = ?)`,
+            )
+            .run(target.id)
           this.#db.prepare('DELETE FROM design_docs WHERE requirement_id = ?').run(target.id)
+          this.#db.prepare('DELETE FROM stories WHERE requirement_id = ?').run(target.id)
         }
         const table =
           target.kind === 'story'
@@ -1719,6 +1744,7 @@ export class WorkflowStore {
           title: current.title,
           ok: true,
           removedDocs: target.kind === 'design_doc' ? 1 : current.docs.length,
+          removedStories: target.kind === 'requirement' ? removedStories : 0,
           removedLinks,
           removedRuns: current.runCount,
           error: null,
@@ -1743,6 +1769,7 @@ export class WorkflowStore {
         title: preview.title,
         ok: false,
         removedDocs: 0,
+        removedStories: 0,
         removedLinks: 0,
         removedRuns: 0,
         error: {
@@ -1770,11 +1797,14 @@ export class WorkflowStore {
       counts,
       deletableCount: items.filter((item) => item.deletable).length,
       skippedCount: items.filter((item) => !item.deletable).length,
-      // Only requirements that will actually be deleted contribute to the
-      // cascade count; one blocked by child stories keeps its documents.
+      // Only records that will actually be deleted contribute to the cascade
+      // counts; a blocked record keeps its children and documents.
       docCount: items
         .filter((item) => item.deletable)
         .reduce((total, item) => total + item.docs.length, 0),
+      storyCount: items
+        .filter((item) => item.deletable)
+        .reduce((total, item) => total + item.stories.length, 0),
       runCount: items
         .filter((item) => item.deletable)
         .reduce((total, item) => total + item.runCount, 0),
@@ -1793,13 +1823,14 @@ export class WorkflowStore {
       )
       const activeRun = this.#activeRunForStories(stories.map((story) => story.id))
       const statusAllowed = DELETABLE_STATUSES.requirement.includes(requirement.status)
+      // A requirement is deleted together with its stories, documents and run
+      // history, so only its own lifecycle and an executing run can block it.
       const blocked = this.#deletionBlock({
         kind: 'requirement',
         id: requirement.id,
         status: requirement.status,
         statusAllowed,
         activeRunId: activeRun,
-        childCount: stories.length,
       })
       return {
         kind: 'requirement',
@@ -1814,7 +1845,10 @@ export class WorkflowStore {
         activeRunId: activeRun,
         docs,
         stories,
-        runCount: 0,
+        runCount: stories.reduce(
+          (total, story) => total + this.listRuns({ storyId: story.id }).length,
+          0,
+        ),
       }
     }
 
@@ -1874,7 +1908,6 @@ export class WorkflowStore {
         status: story.status,
         statusAllowed,
         activeRunId: activeRun,
-        childCount: 0,
       })
       return {
         kind: 'story',
@@ -1904,7 +1937,6 @@ export class WorkflowStore {
       status: bug.status,
       statusAllowed,
       activeRunId: activeRun,
-      childCount: 0,
     })
     return {
       kind: 'bug',
@@ -1929,7 +1961,6 @@ export class WorkflowStore {
     readonly status: string
     readonly statusAllowed: boolean
     readonly activeRunId: string | null
-    readonly childCount: number
   }): { readonly code: WorkflowErrorCode; readonly message: string } | null {
     if (!input.statusAllowed) {
       return {
@@ -1941,12 +1972,6 @@ export class WorkflowStore {
       return {
         code: 'has_active_run',
         message: `${input.kind} ${input.id} is ${input.status} but run ${input.activeRunId} is still running; cancel the run before deleting`,
-      }
-    }
-    if (input.childCount > 0) {
-      return {
-        code: 'has_children',
-        message: `${input.kind} ${input.id} still owns ${input.childCount} stor${input.childCount === 1 ? 'y' : 'ies'}; delete those stories first`,
       }
     }
     return null
@@ -1979,6 +2004,7 @@ export class WorkflowStore {
     return [
       requirement.contentPath,
       ...this.listDesignDocs(requirement.id).map((doc) => doc.contentPath),
+      ...this.listStories({ requirementId: requirement.id }).map((story) => story.contentPath),
     ]
   }
 
@@ -2005,17 +2031,6 @@ export class WorkflowStore {
       normalized.push({ kind: target.kind, id })
     }
     return normalized
-  }
-
-  /** AC 7: one batch never spans workspaces. */
-  #assertSingleWorkspace(items: readonly DeletePreviewItem[]): void {
-    const workspaces = new Set(items.filter((item) => item.workspaceId.length > 0).map((item) => item.workspaceId))
-    if (workspaces.size > 1) {
-      throw new WorkflowError(
-        'invalid_input',
-        `a delete batch must stay inside one workspace; got ${[...workspaces].join(', ')}`,
-      )
-    }
   }
 
   #activeRunForStories(storyIds: readonly string[]): string | null {

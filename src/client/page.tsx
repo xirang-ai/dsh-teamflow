@@ -1032,7 +1032,6 @@ export function WorkbenchPage({
       open(draft.workspaceId, buildCreatePrompt(draft), {
         agentPreset: CREATE_PRESET[draft.kind],
         autoSend: true,
-        composerKind: draft.kind,
         ...(files.length === 0
           ? {}
           : {
@@ -1082,7 +1081,6 @@ export function WorkbenchPage({
       open(requirement.workspaceId, buildRequirementDiscussionPrompt(kind), {
         agentPreset: presetForRequirementDiscussion(kind),
         autoSend: false,
-        composerKind: kind,
       })
         .then(async (outcome) => {
           if (outcome.status === 'unavailable') {
@@ -1139,7 +1137,6 @@ export function WorkbenchPage({
       open(subject.workspaceId, buildRecordDiscussionPrompt(subject.kind, subject.title), {
         agentPreset: presetForRecordDiscussion(subject.kind),
         autoSend: false,
-        composerKind: subject.kind,
       })
         .then(async (outcome) => {
           if (outcome.status === 'unavailable') {
@@ -1460,36 +1457,19 @@ export function WorkbenchPage({
     [data],
   )
 
-  const toggleSelected = useCallback(
-    (target: DeleteTarget, workspaceId: string) => {
-      setSelected((current) => {
-        const next = new Set(current)
-        const key = rowKey(target)
-        if (next.has(key)) {
-          next.delete(key)
-          return next
-        }
-        const anchorKey = current.values().next().value
-        const anchor = anchorKey === undefined ? undefined : targetIndex.get(anchorKey)
-        if (anchor !== undefined && anchor.workspaceId !== workspaceId) {
-          showToast(t('delete.singleWorkspace'))
-          return current
-        }
-        next.add(key)
-        return next
-      })
-    },
-    [showToast, t, targetIndex],
-  )
+  const toggleSelected = useCallback((target: DeleteTarget) => {
+    setSelected((current) => {
+      const next = new Set(current)
+      const key = rowKey(target)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
 
   const selectAllVisible = useCallback(() => {
-    const first = visibleTargets[0]
-    if (first === undefined) return
-    setSelected(new Set(visibleTargets.filter((row) => row.workspaceId === first.workspaceId).map((row) => rowKey(row.target))))
-    if (visibleTargets.some((row) => row.workspaceId !== first.workspaceId)) {
-      showToast(t('delete.singleWorkspace'))
-    }
-  }, [showToast, t, visibleTargets])
+    setSelected(new Set(visibleTargets.map((row) => rowKey(row.target))))
+  }, [visibleTargets])
 
   const runDelete = useCallback(() => {
     if (confirm === null || deleting) return
@@ -1848,7 +1828,7 @@ export function WorkbenchPage({
                               selectable={cleanup}
                               selected={selected.has(rowKey({ kind: 'bug', id: bug.id }))}
                               onOpen={() => setView({ kind: 'bug', id: bug.id })}
-                              onSelect={() => toggleSelected({ kind: 'bug', id: bug.id }, bug.workspaceId)}
+                              onSelect={() => toggleSelected({ kind: 'bug', id: bug.id })}
                               onDelete={() => openDelete([{ kind: 'bug', id: bug.id }])}
                             />
                           ))
@@ -1881,7 +1861,6 @@ export function WorkbenchPage({
                                   item.kind === 'requirement'
                                     ? { kind: 'requirement', id: item.id }
                                     : { kind: 'story', id: item.story.id },
-                                  itemWorkspaceId(item),
                                 )
                               }
                               onDelete={() =>
@@ -2168,7 +2147,11 @@ export function WorkbenchPage({
                   </span>
                   <span className="tf-delete-reason">
                     {result.ok
-                      ? t('delete.removed', { docs: result.removedDocs, runs: result.removedRuns })
+                      ? t('delete.removed', {
+                          stories: result.removedStories ?? 0,
+                          docs: result.removedDocs,
+                          runs: result.removedRuns,
+                        })
                       : (result.error?.message ?? '')}
                   </span>
                 </li>
@@ -2217,11 +2200,6 @@ function deleteReasonText(t: TranslateFn, item: DeletePreviewItem): string {
         title: item.title || t('delete.missing'),
         status: deleteStatusText(t, item),
       })
-    case 'has_children':
-      return t('delete.reason.hasChildren', {
-        title: item.title || t('delete.missing'),
-        count: item.stories.length,
-      })
     default:
       return item.reason ?? ''
   }
@@ -2249,8 +2227,13 @@ function DeletePreviewBody({
             requirements: preview.counts.requirement,
           })}
         </span>
-        <span>{t('delete.docTotal', { count: preview.docCount })}</span>
-        <span>{t('delete.runTotal', { count: preview.runCount })}</span>
+        {/* Cascade counts only when there is something to cascade; a row of
+            zeroes on a single-bug delete is noise, not information. */}
+        {preview.storyCount > 0 ? (
+          <span>{t('delete.storyTotal', { count: preview.storyCount })}</span>
+        ) : null}
+        {preview.docCount > 0 ? <span>{t('delete.docTotal', { count: preview.docCount })}</span> : null}
+        {preview.runCount > 0 ? <span>{t('delete.runTotal', { count: preview.runCount })}</span> : null}
         {preview.skippedCount > 0 ? (
           <span className="tf-danger-text">{t('delete.skipped', { count: preview.skippedCount })}</span>
         ) : null}
@@ -2266,7 +2249,7 @@ function DeletePreviewBody({
             {item.deletable ? null : (
               <span className="tf-delete-reason">{deleteReasonText(t, item)}</span>
             )}
-            {item.stories.length > 0 ? (
+            {item.deletable && item.stories.length > 0 ? (
               <span className="tf-delete-reason">
                 {t('delete.children', {
                   count: item.stories.length,
